@@ -12,3 +12,14 @@ export const CAMERA = {
 };
 
 export const FIXED_DT = 1 / 60;  // seconds
+
+export const ROCKET = {
+  DRY_MASS: 1_000,        // kg
+  FUEL_MASS: 9_000,       // kg
+  MAX_THRUST: 150_000,    // N  (TWR ~1.35 at launch)
+  ISP: 300,               // seconds
+  ROTATION_SPEED: 1.5,    // rad/s
+  CRASH_SPEED: 50,        // m/s — max safe landing speed
+  LENGTH: 1_000,          // meters (game scale — visible at surface zoom)
+  WIDTH: 350,             // meters
+};

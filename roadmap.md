@@ -45,16 +45,16 @@ Each phase builds on the last. Nothing in a later phase should be started until 
 
 ---
 
-## Phase 3: Orbital Mechanics — Active Mode
+## Phase 3: Trajectory Predictor & Orbital Verification
+
+- **Draw the trajectory preview**
+  - By forward-integrating the current state vector N steps each frame using the same gravity math
+  - By drawing the resulting path as a dashed line on the canvas
+  - By updating the preview in real time as thrust direction changes
 
 - **Verify orbital insertion is possible**
   - By launching the rocket, burning prograde, and confirming a stable circular orbit can be achieved with correct physics
-  - By logging velocity and altitude each frame to confirm values match expected orbital math
-
-- **Implement atmospheric drag**
-  - By defining an atmosphere boundary altitude
-  - By applying a drag force proportional to velocity squared and air density (which decreases exponentially with altitude)
-  - By confirming low orbits decay and high orbits are stable
+  - By using the trajectory line to visually confirm the orbit closes
 
 ---
 
@@ -66,16 +66,18 @@ Each phase builds on the last. Nothing in a later phase should be started until 
 
 - **Implement rails mode**
   - By writing a `positionFromOrbitalElements(elements, t)` function using Kepler's equation to compute position at any time analytically
-  - By switching the rocket from active physics to rails the moment engines cut off and orbit clears the atmosphere
+  - By switching the rocket from active physics to rails the moment engines cut off
   - By computing rocket position each frame from the Keplerian formula instead of integrating forces
 
 - **Implement rails exit**
   - By detecting thrust input while on rails and immediately converting the current analytical position + velocity back to a state vector
   - By resuming Newtonian integration from that state vector
 
+> **Design note — physics bubble:** Objects on Keplerian rails have no collision geometry; they are just a position computed analytically each frame and will phase through anything. When Phase 6 introduces dropped stages as independent objects, both the active rocket and a coasting stage could be on rails simultaneously and would ignore each other. The fix — implemented in Phase 6 — is a proximity threshold (the "physics bubble"): each frame, compare every rails object's analytical position to the active rocket; if distance < `PHYSICS_BUBBLE_RADIUS`, reconstruct that object's full state vector and return it to Newtonian integration so normal collision detection applies. Single-rocket phases (4 and 5) are unaffected.
+
 ---
 
-## Phase 5: Trajectory Predictor
+## Phase 5: Orbit Display
 
 - **Draw the orbit ellipse**
   - By taking the current orbital elements and drawing the full Keplerian ellipse on the canvas in map view
@@ -84,11 +86,6 @@ Each phase builds on the last. Nothing in a later phase should be started until 
 - **Add periapsis and apoapsis markers**
   - By computing Pe and Ap from semi-major axis and eccentricity
   - By rendering labeled markers at those points on the ellipse
-
-- **Active-mode trajectory preview**
-  - By forward-integrating the current state vector N steps (using the same gravity + drag math) each frame when thrusting
-  - By drawing the resulting path as a dashed line
-  - By updating the preview in real time as thrust direction changes
 
 ---
 
@@ -103,6 +100,12 @@ Each phase builds on the last. Nothing in a later phase should be started until 
 - **Dropped stage physics**
   - By giving dropped stages their own position, velocity (inherited at separation), and gravity simulation
   - By rendering dropped stages until they re-enter the atmosphere or leave the viewport
+
+- **Physics bubble for rails objects**
+  - By defining `PHYSICS_BUBBLE_RADIUS` in constants (start at 500 m, tune as needed)
+  - By iterating all dropped stages each frame and computing their analytical position
+  - By checking distance from each stage to the active rocket; if below the threshold, reconstruct the stage's state vector from its orbital elements and switch it back to Newtonian integration
+  - By verifying that a returning rocket correctly collides with a coasting spent stage when flying within bubble range
 
 ---
 
@@ -142,6 +145,7 @@ Each phase builds on the last. Nothing in a later phase should be started until 
 
 ## Post-MVP (Not Scheduled)
 
+- Atmospheric drag (drag force ∝ v² × air density, exponential density falloff with altitude)
 - Firebase / Supabase accounts and cloud saves
 - Multiple planets and gravity assists
 - Atmospheric heating and reentry effects
