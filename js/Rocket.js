@@ -1,4 +1,5 @@
 import { G, PLANET, ROCKET } from './constants.js';
+import { stateToElements, elementsToState } from './OrbitalMechanics.js';
 
 const G0 = 9.80665;
 const EXHAUST_VEL = ROCKET.ISP * G0;
@@ -14,12 +15,16 @@ export class Rocket {
     this.throttle = 0;
     this.fuelMass = ROCKET.FUEL_MASS;
     this.dryMass = ROCKET.DRY_MASS;
-    this.state = 'landed';  // 'flying' | 'landed' | 'crashed'
+    this.state = 'landed';  // 'flying' | 'landed' | 'crashed' | 'rails'
+    this.simTime = 0;       // seconds elapsed since game start
+    this.railsElements = null;
   }
 
   get mass() { return this.dryMass + this.fuelMass; }
 
   update(dt, input) {
+    this.simTime += dt;
+
     if (this.state === 'landed') {
       if (input.held('ArrowUp') || input.held('KeyW')) {
         this.state = 'flying';
@@ -29,6 +34,27 @@ export class Rocket {
     }
     if (this.state === 'crashed') return;
 
+    // --- Keplerian rails ---
+    if (this.state === 'rails') {
+      if (input.held('ArrowLeft')  || input.held('KeyA')) this.rotation -= ROCKET.ROTATION_SPEED * dt;
+      if (input.held('ArrowRight') || input.held('KeyD')) this.rotation += ROCKET.ROTATION_SPEED * dt;
+
+      // Throttle-up exits rails and resumes Newtonian integration
+      if ((input.held('ArrowUp') || input.held('KeyW')) && this.fuelMass > 0) {
+        const s = elementsToState(this.railsElements, this.simTime);
+        this.x = s.x; this.y = s.y; this.vx = s.vx; this.vy = s.vy;
+        this.state = 'flying';
+        this.throttle = 0;
+        return;
+      }
+
+      // Advance position analytically
+      const s = elementsToState(this.railsElements, this.simTime);
+      this.x = s.x; this.y = s.y; this.vx = s.vx; this.vy = s.vy;
+      return;
+    }
+
+    // --- Newtonian flying ---
     if (input.held('ArrowLeft')  || input.held('KeyA')) this.rotation -= ROCKET.ROTATION_SPEED * dt;
     if (input.held('ArrowRight') || input.held('KeyD')) this.rotation += ROCKET.ROTATION_SPEED * dt;
     if (input.held('ArrowUp')    || input.held('KeyW')) this.throttle = Math.min(1, this.throttle + 2 * dt);
@@ -60,6 +86,24 @@ export class Rocket {
       this.vx = 0;
       this.vy = 0;
       this.throttle = 0;
+      return;
+    }
+
+    // Transition to Keplerian rails when engines are off and orbit fully clears the atmosphere
+    const enginesOff = this.throttle < 0.01 || this.fuelMass <= 0;
+    if (enginesOff) {
+      const alt = r - PLANET.RADIUS;
+      if (alt > PLANET.ATMOSPHERE_ALTITUDE) {
+        const els = stateToElements(this.x, this.y, this.vx, this.vy, this.simTime);
+        if (els !== null) {
+          const periapsis = els.a * (1 - els.e) - PLANET.RADIUS;
+          if (periapsis > PLANET.ATMOSPHERE_ALTITUDE) {
+            this.railsElements = els;
+            this.state = 'rails';
+            this.throttle = 0;
+          }
+        }
+      }
     }
   }
 
@@ -109,7 +153,7 @@ export class Rocket {
 
     ctx.restore();
 
-    if (this.state !== 'flying') {
+    if (this.state === 'landed' || this.state === 'crashed') {
       ctx.save();
       ctx.fillStyle = this.state === 'crashed' ? '#f44' : '#8f8';
       ctx.font = '14px monospace';
