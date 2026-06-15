@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Orbitals — Vehicle Assembly</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #08080f;
+      color: #c0d0e0;
+      font-family: monospace;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #sidebar {
+      width: 196px;
+      flex-shrink: 0;
+      background: #0c0c1c;
+      border-right: 1px solid rgba(70, 120, 200, 0.2);
+      display: flex;
+      flex-direction: column;
+      padding: 18px 12px 14px;
+      gap: 18px;
+      overflow-y: auto;
+    }
+
+    h1 {
+      font-size: 10px;
+      letter-spacing: 4px;
+      color: rgba(100, 170, 255, 0.6);
+      text-transform: uppercase;
+    }
+
+    .section-label {
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: rgba(140, 165, 200, 0.4);
+      text-transform: uppercase;
+      margin-bottom: 7px;
+    }
+
+    #palette {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .part-btn {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      width: 100%;
+      background: rgba(255,255,255,0.025);
+      border: 1px solid rgba(70, 120, 200, 0.18);
+      border-left: 3px solid transparent;
+      color: #aac0d8;
+      padding: 8px 10px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 12px;
+      text-align: left;
+      border-radius: 2px;
+    }
+    .part-btn:hover { background: rgba(70, 120, 200, 0.09); }
+    .part-btn.selected {
+      background: rgba(70, 120, 200, 0.13);
+      border-left-color: var(--part-color, #64a0e0);
+      color: #ddeeff;
+    }
+    .part-sub {
+      font-size: 10px;
+      color: rgba(140, 170, 210, 0.45);
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 5px 10px;
+      font-size: 12px;
+    }
+    .stat-key { color: rgba(140, 170, 200, 0.55); }
+    .stat-val { color: #b8d8f4; text-align: right; }
+
+    #validation {
+      font-size: 11px;
+      padding: 7px 9px;
+      border-radius: 2px;
+      line-height: 1.4;
+    }
+    #validation.valid {
+      background: rgba(40, 170, 90, 0.1);
+      color: #55c87a;
+      border: 1px solid rgba(40, 170, 90, 0.22);
+    }
+    #validation.invalid {
+      background: rgba(190, 55, 55, 0.08);
+      color: #d06868;
+      border: 1px solid rgba(190, 55, 55, 0.18);
+    }
+
+    #clear-btn {
+      width: 100%;
+      padding: 8px;
+      background: transparent;
+      border: 1px solid rgba(70, 120, 200, 0.18);
+      color: rgba(140, 165, 210, 0.5);
+      font-family: monospace;
+      font-size: 11px;
+      letter-spacing: 1px;
+      cursor: pointer;
+      border-radius: 2px;
+    }
+    #clear-btn:hover {
+      background: rgba(190, 55, 55, 0.08);
+      color: #cc6060;
+      border-color: rgba(190, 55, 55, 0.25);
+    }
+
+    #nav-launch {
+      display: block;
+      width: 100%;
+      padding: 8px;
+      background: rgba(40, 170, 90, 0.07);
+      border: 1px solid rgba(40, 170, 90, 0.22);
+      color: #55c87a;
+      font-family: monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      cursor: pointer;
+      border-radius: 2px;
+      text-align: center;
+      text-decoration: none;
+    }
+    #nav-launch:hover {
+      background: rgba(40, 170, 90, 0.15);
+      border-color: rgba(40, 170, 90, 0.45);
+    }
+
+    #hint {
+      font-size: 10px;
+      color: rgba(130, 155, 190, 0.28);
+      line-height: 1.6;
+      margin-top: auto;
+    }
+
+    canvas { display: block; flex: 1; }
+  </style>
+</head>
+<body>
+  <aside id="sidebar">
+    <h1>VAB</h1>
+
+    <div>
+      <p class="section-label">Parts</p>
+      <div id="palette">
+        <button class="part-btn selected" data-part="pod" style="--part-color:#8ab4f8">
+          Command Pod
+          <span class="part-sub">800 kg · control</span>
+        </button>
+        <button class="part-btn" data-part="tank" style="--part-color:#4a8ac8">
+          Fuel Tank
+          <span class="part-sub">200 kg dry · 1 800 kg fuel</span>
+        </button>
+        <button class="part-btn" data-part="engine" style="--part-color:#70a898">
+          Engine
+          <span class="part-sub">150 kN · Isp 300 s</span>
+        </button>
+        <button class="part-btn" data-part="decoupler" style="--part-color:#c8a040">
+          Decoupler
+          <span class="part-sub">50 kg · separator</span>
+        </button>
+      </div>
+    </div>
+
+    <div>
+      <p class="section-label">Stats</p>
+      <div class="stats-grid">
+        <span class="stat-key">Mass</span>   <span class="stat-val" id="stat-mass">—</span>
+        <span class="stat-key">Fuel</span>   <span class="stat-val" id="stat-fuel">—</span>
+        <span class="stat-key">Thrust</span> <span class="stat-val" id="stat-thrust">—</span>
+        <span class="stat-key">TWR</span>    <span class="stat-val" id="stat-twr">—</span>
+      </div>
+    </div>
+
+    <div id="validation" class="invalid">Place parts to begin</div>
+
+    <button id="clear-btn">CLEAR ALL</button>
+
+    <a id="nav-launch" href="index.html">LAUNCH</a>
+
+    <p id="hint">Click to place<br>Right-click to remove</p>
+  </aside>
+
+  <canvas id="grid-canvas"></canvas>
+  <script type="module" src="js/builder.js"></script>
+</body>
+</html>

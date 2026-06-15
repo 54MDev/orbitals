@@ -89,7 +89,39 @@ Each phase builds on the last. Nothing in a later phase should be started until 
 
 ---
 
-## Phase 6: Staging & Multi-Stage Rockets
+## Phase 6: Grid-Based Rocket Builder
+
+### Phase 6a: Builder Screen
+
+- **Build the parts palette and grid UI**
+  - By creating a separate `builder.html` page with its own canvas
+  - By rendering a side-panel with available parts (pod, tank, engine, decoupler), each drawn as canvas primitives (no image assets)
+  - By drawing a snap grid in the build area
+  - By placing parts on click (snapped to grid) and removing on right-click
+
+- **Part stacking and validation**
+  - By enforcing vertical stacking rules (engine at bottom, pod at top)
+  - By computing total mass, total fuel, and TWR from the assembled configuration
+  - By blocking launch if the rocket fails validation (no pod, no engine, no fuel) and showing an error
+
+### Phase 6b: Launch Screen
+
+- **Wire the builder to the flight screen**
+  - By serializing the assembled part list to JSON and writing it to `localStorage` on launch
+  - By reading the saved design in `index.html` and constructing the `Rocket` with derived mass, fuel, and thrust values instead of hardcoded constants
+  - By adding a "Launch" button in the builder that validates, saves, and redirects to `index.html`
+  - By adding a "Back to Builder" button in the flight screen
+
+### Phase 6c: Save & Load Designs
+
+- **Persist and manage multiple designs**
+  - By allowing the player to name a design and save it separately from the active launch config
+  - By listing saved designs in the builder UI so any can be loaded for editing
+  - By loading saved designs back into the builder on page load
+
+---
+
+## Phase 7: Staging & Multi-Stage Rockets
 
 - **Implement the staging system**
   - By defining the rocket as an ordered list of stages, each containing parts
@@ -106,24 +138,6 @@ Each phase builds on the last. Nothing in a later phase should be started until 
   - By iterating all dropped stages each frame and computing their analytical position
   - By checking distance from each stage to the active rocket; if below the threshold, reconstruct the stage's state vector from its orbital elements and switch it back to Newtonian integration
   - By verifying that a returning rocket correctly collides with a coasting spent stage when flying within bubble range
-
----
-
-## Phase 7: Grid-Based Rocket Builder
-
-- **Build the parts palette and grid UI**
-  - By rendering a side-panel with available parts (pod, tank, engine, decoupler)
-  - By drawing a snap grid in the build area
-  - By allowing drag-and-drop placement of parts onto the grid
-
-- **Part stacking and validation**
-  - By enforcing vertical stacking rules (engine at bottom, pod at top)
-  - By computing total mass, total fuel, and stage order from the assembled configuration
-  - By blocking launch if the rocket fails validation (no pod, no engine, no fuel)
-
-- **Save and load rocket designs**
-  - By serializing the assembled part list to JSON and writing it to localStorage
-  - By loading saved designs back into the builder on page load
 
 ---
 

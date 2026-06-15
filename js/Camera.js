@@ -11,6 +11,7 @@ export class Camera {
     this._logZoom = Math.max(CAMERA.MIN_LOG_ZOOM, Math.min(CAMERA.MAX_LOG_ZOOM, this._logZoom));
 
     this.target = null;  // world-space {x, y} to track; null = fixed
+    this.rotation = 0;   // canvas rotation in radians; applied in render(), not worldToScreen
   }
 
   get zoom() {

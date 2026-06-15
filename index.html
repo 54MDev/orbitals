@@ -17,9 +17,32 @@
     canvas {
       display: block;
     }
+    #nav-builder {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 6px 14px;
+      background: transparent;
+      border: 1px solid rgba(70, 120, 200, 0.35);
+      color: rgba(140, 180, 255, 0.7);
+      font-family: monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      cursor: pointer;
+      border-radius: 2px;
+      z-index: 100;
+      text-decoration: none;
+    }
+    #nav-builder:hover {
+      background: rgba(70, 120, 200, 0.12);
+      color: #aad0ff;
+      border-color: rgba(70, 120, 200, 0.6);
+    }
   </style>
 </head>
 <body>
+  <a id="nav-builder" href="builder.html">VAB</a>
   <canvas id="canvas"></canvas>
   <script type="module" src="js/main.js"></script>
 </body>

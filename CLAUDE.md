@@ -17,17 +17,18 @@ python3 -m http.server 8080
 
 ## Current State
 
-Phases 1–3 are complete and stable.
+Phases 1–4 are complete and stable.
 
 | Phase | Status |
 |---|---|
 | 1 — Canvas, world, camera | Done |
 | 2 — Rocket, gravity, controls, surface collision | Done |
 | 3 — Trajectory predictor | Done |
-| 4 — Keplerian Rails | Not started |
-| 5+ | Not started |
+| 4 — Keplerian Rails | Done |
+| 5 — Orbit Display | Done |
+| 6+ | Not started |
 
-**Next up: Phase 4** — extract orbital elements from state vector, implement rails mode, implement rails exit.
+**Next up: Phase 6a** — builder screen (`builder.html`), parts palette, grid placement, validation.
 
 ---
 
@@ -45,6 +46,7 @@ Phases 1–3 are complete and stable.
 | `js/Rocket.js` | Rocket state machine, Velocity Verlet integration, thrust, draw |
 | `js/Input.js` | Keyboard state via `Set` of held key codes |
 | `js/Trajectory.js` | Forward-integrates 500 steps × 10 s/step, draws dashed path |
+| `js/OrbitalMechanics.js` | State→orbital elements, elements→state reconstruction (Kepler solver) |
 
 ---
 
@@ -82,11 +84,15 @@ FIXED_DT        = 1/60 s
 ## Rocket State Machine
 
 ```
-landed  →  (W/↑ pressed)  →  flying
-flying  →  (surface contact, speed < 50 m/s)  →  landed
-flying  →  (surface contact, speed ≥ 50 m/s)  →  crashed
+landed  →  (W/↑ pressed)                          →  flying
+flying  →  (engines off, orbit above atmosphere)   →  rails
+flying  →  (surface contact, speed < 50 m/s)       →  landed
+flying  →  (surface contact, speed ≥ 50 m/s)       →  crashed
+rails   →  (W/↑ pressed — any thrust input)        →  flying
 crashed →  (reload)
 ```
+
+On rails, position is computed analytically from Keplerian orbital elements each frame instead of integrating forces. `rocket.railsElements` holds `{ a, e, omega, prograde, M0, n, t_epoch }`.
 
 ---
 
@@ -103,15 +109,16 @@ Camera converts world coords to screen via `camera.worldToScreen(x, y, canvasW, 
 
 ---
 
-## Phase 4 Design Notes (Keplerian Rails)
+## Keplerian Rails (Phase 4 — implemented)
 
-When engines cut off and the orbit clears the atmosphere, switch from Newtonian integration to analytical position from orbital elements:
+`js/OrbitalMechanics.js` exports two functions used by `Rocket.js`:
 
-- `stateToOrbitalElements(pos, vel, μ)` → `{ a, e, ω, ν₀, t₀ }`
-- `positionFromOrbitalElements(elements, t)` using Kepler's equation (solve for eccentric anomaly E iteratively, then convert to position)
-- Rails exit: on any thrust input, reconstruct `(x, y, vx, vy)` from elements at current `t` and resume Verlet
+- `stateToOrbitalElements(x, y, vx, vy, μ)` → `{ a, e, omega, prograde, M0, n, t_epoch }`
+- `elementsToState(elements, t)` → `{ x, y, vx, vy }`
 
-**Physics bubble (implement in Phase 6 when dropped stages exist):** Objects on rails have no collision geometry — they phase through everything. Fix: each frame, compute the analytical position of every rails object and check distance to the active rocket. If `distance < PHYSICS_BUBBLE_RADIUS` (constant to add in Phase 6, ~500 m), reconstruct that object's state vector and return it to Newtonian integration.
+The Kepler equation (solve for eccentric anomaly E) is iterated to convergence inside `elementsToState`. `Trajectory.js` samples 360 points from elements to draw the closed orbit ellipse, and finds the apoapsis/periapsis points for the labeled markers on the orbit line.
+
+**Dev panel:** a hidden overlay (top-right corner in flight) with an "infinite fuel" toggle. Implemented in `main.js` via `dev.infiniteFuel` flag checked each update tick.
 
 ---
 
@@ -119,11 +126,16 @@ When engines cut off and the orbit clears the atmosphere, switch from Newtonian 
 
 | Key | Action |
 |---|---|
-| W / ↑ | Throttle up (also launches from surface) |
+| W / ↑ | Throttle up (also launches from surface; exits rails) |
 | S / ↓ | Throttle down |
 | A / ← | Rotate left |
 | D / → | Rotate right |
-| Space | Next stage (Phase 6+) |
+| . (period) | Increase time warp |
+| , (comma) | Decrease time warp / cancel warp target |
+| Click orbit | Click a point on the rails trajectory to warp there |
+| Space | Next stage (Phase 7+) |
 | T | SAS toggle (Phase 8) |
 | M | Map view (Phase 8) |
 | Scroll | Zoom in/out |
+
+**Time warp levels:** flying = 1×/2×/3×; rails = 1×/10×/50×/100×

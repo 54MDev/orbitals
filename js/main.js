@@ -89,11 +89,19 @@ canvas.addEventListener('click', (e) => {
   }
 
   // Rails click-to-warp: find nearest trajectory point within ~20 px
+  // Unrotate click coords to match the unrotated worldToScreen space
+  const ddx = cx - canvas.width / 2;
+  const ddy = cy - canvas.height / 2;
+  const cosR = Math.cos(camera.rotation);
+  const sinR = Math.sin(camera.rotation);
+  const ucx = ddx * cosR - ddy * sinR + canvas.width / 2;
+  const ucy = ddx * sinR + ddy * cosR + canvas.height / 2;
+
   if (rocket.state === 'rails' && trajectory.points.length > 0) {
     let bestDist = Infinity, bestIdx = -1;
     for (let i = 0; i < trajectory.points.length; i++) {
       const sp = camera.worldToScreen(trajectory.points[i].x, trajectory.points[i].y, canvas.width, canvas.height);
-      const d = Math.hypot(sp.x - cx, sp.y - cy);
+      const d = Math.hypot(sp.x - ucx, sp.y - ucy);
       if (d < bestDist) { bestDist = d; bestIdx = i; }
     }
     if (bestDist <= 20 && bestIdx >= 0) {
@@ -132,17 +140,40 @@ function update(dt) {
   rocket.update(wdt, input);
   camera.update();
   trajectory.compute(rocket);
+
+  // Horizon lock: smoothly reorient to planet surface normal within 100 km
+  const rocketDist = Math.hypot(rocket.x, rocket.y);
+  const altKm = (rocketDist - PLANET.RADIUS) / 1000;
+  const horizonT = Math.max(0, Math.min(1, 1 - (altKm - 50) / 50));  // 0 at 100 km, 1 at ≤50 km
+  if (horizonT <= 0) {
+    camera.rotation = 0;
+  } else {
+    // Angle from planet to rocket; rotate camera so that direction points screen-up
+    let target = Math.PI / 2 - Math.atan2(rocket.y, rocket.x);
+    // Normalize to [-π, π] so lerp from 0 takes the short path
+    target = ((target + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+    camera.rotation = target * horizonT;
+  }
 }
 
 function render() {
   ctx.fillStyle = '#00000a';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  // Starfield stays fixed (stars don't spin as the camera reorients)
   starfield.draw(ctx, canvas.width, canvas.height);
+
+  // World layer: rotate around screen center to lock horizon when near surface
+  ctx.save();
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(-camera.rotation);
+  ctx.translate(-canvas.width / 2, -canvas.height / 2);
   planet.draw(ctx, camera, canvas.width, canvas.height);
   trajectory.draw(ctx, camera, canvas.width, canvas.height);
   rocket.draw(ctx, camera, canvas.width, canvas.height);
+  ctx.restore();
 
+  // HUD and dev panel stay upright
   drawHUD();
   drawDevPanel();
 }
