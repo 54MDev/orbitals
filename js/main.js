@@ -4,7 +4,7 @@ import { Planet } from './Planet.js';
 import { Starfield } from './Starfield.js';
 import { Rocket } from './Rocket.js';
 import { Input } from './Input.js';
-import { Trajectory } from './Trajectory.js';
+import { Trajectory, ORBIT_SAMPLES } from './Trajectory.js';
 import { PLANET, ROCKET } from './constants.js';
 
 const canvas = document.getElementById('canvas');
@@ -31,6 +31,47 @@ canvas.addEventListener('wheel', (e) => {
   camera.adjustZoom(e.deltaY);
 }, { passive: false });
 
+// --- Time warp ---
+const FLYING_WARPS = [1, 2, 3];
+const RAILS_WARPS  = [1, 10, 50, 100];
+let timeWarp   = 1;
+let warpTarget = null;  // simTime to stop warping (rails click-to-warp)
+
+function warpLevels() {
+  return rocket.state === 'rails' ? RAILS_WARPS : FLYING_WARPS;
+}
+
+function increaseWarp() {
+  const levels = warpLevels();
+  const idx = levels.indexOf(timeWarp);
+  if (idx < levels.length - 1) timeWarp = levels[idx + 1];
+}
+
+function decreaseWarp() {
+  const levels = warpLevels();
+  const idx = levels.indexOf(timeWarp);
+  if (idx > 0) timeWarp = levels[idx - 1];
+  else timeWarp = 1;
+  if (timeWarp === 1) warpTarget = null;
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Period') increaseWarp();
+  if (e.code === 'Comma')  decreaseWarp();
+});
+
+// Given a target true anomaly on the current rails orbit, return the next simTime
+// the rocket will be at that position.
+function nuToSimTime(nu, els) {
+  const { e, M0, n, t_epoch } = els;
+  const E = 2 * Math.atan2(Math.sqrt(1 - e) * Math.sin(nu / 2), Math.sqrt(1 + e) * Math.cos(nu / 2));
+  const M_target  = ((E - e * Math.sin(E)) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+  const M_current = ((M0 + n * (rocket.simTime - t_epoch)) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+  let dM = M_target - M_current;
+  if (dM <= 1e-4) dM += 2 * Math.PI;  // always warp forward; tiny dM → next orbit
+  return rocket.simTime + dM / n;
+}
+
 // --- Dev panel ---
 const dev = { infiniteFuel: false };
 const _devButtons = [];  // populated each frame by drawDevPanel()
@@ -39,16 +80,56 @@ canvas.addEventListener('click', (e) => {
   const rect = canvas.getBoundingClientRect();
   const cx = e.clientX - rect.left;
   const cy = e.clientY - rect.top;
+
   for (const btn of _devButtons) {
     if (cx >= btn.x && cx <= btn.x + btn.w && cy >= btn.y && cy <= btn.y + btn.h) {
       dev[btn.key] = !dev[btn.key];
+      return;
+    }
+  }
+
+  // Rails click-to-warp: find nearest trajectory point within ~20 px
+  if (rocket.state === 'rails' && trajectory.points.length > 0) {
+    let bestDist = Infinity, bestIdx = -1;
+    for (let i = 0; i < trajectory.points.length; i++) {
+      const sp = camera.worldToScreen(trajectory.points[i].x, trajectory.points[i].y, canvas.width, canvas.height);
+      const d = Math.hypot(sp.x - cx, sp.y - cy);
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    if (bestDist <= 20 && bestIdx >= 0) {
+      const nu = (bestIdx / ORBIT_SAMPLES) * 2 * Math.PI;
+      warpTarget = nuToSimTime(nu, rocket.railsElements);
+      timeWarp = 100;
     }
   }
 });
 
 function update(dt) {
   if (dev.infiniteFuel) rocket.fuelMass = ROCKET.FUEL_MASS;
-  rocket.update(dt, input);
+
+  // Cap warp to valid levels for current state
+  const levels = warpLevels();
+  if (!levels.includes(timeWarp)) timeWarp = levels[levels.length - 1];
+
+  let wdt = dt * timeWarp;
+
+  // Stop at warp target (rails click-to-warp)
+  if (warpTarget !== null && rocket.state === 'rails') {
+    const remaining = warpTarget - rocket.simTime;
+    if (remaining <= wdt) {
+      wdt = Math.max(remaining, 0);
+      warpTarget = null;
+      timeWarp = 1;
+    }
+  }
+
+  // Reset warp if we leave rails
+  if (rocket.state !== 'rails' && timeWarp > 3) {
+    timeWarp = 1;
+    warpTarget = null;
+  }
+
+  rocket.update(wdt, input);
   camera.update();
   trajectory.compute(rocket);
 }
@@ -82,6 +163,10 @@ function drawHUD() {
     ctx.fillText(`SPD  ${spd.toFixed(0)} m/s`, 16, 46);
     ctx.fillText(`FUEL ${fuel}%`, 16, 64);
     ctx.fillText(`THR  ${(rocket.throttle * 100).toFixed(0)}%`, 16, 82);
+    if (timeWarp > 1) {
+      ctx.fillStyle = 'rgba(255, 200, 50, 0.9)';
+      ctx.fillText(`WARP ${timeWarp}×`, 16, 100);
+    }
   } else if (rocket.state === 'rails') {
     const { a, e, n } = rocket.railsElements;
     const r = Math.hypot(rocket.x, rocket.y);
@@ -97,8 +182,24 @@ function drawHUD() {
     ctx.fillText(`AP   ${apoAlt.toFixed(1)} km`, 16, 82);
     ctx.fillText(`PRD  ${period.toFixed(1)} min`, 16, 100);
     ctx.fillText(`ECC  ${e.toFixed(4)}`, 16, 118);
-    ctx.fillStyle = 'rgba(100, 210, 255, 0.55)';
-    ctx.fillText('W / ↑  burn to exit rails', 16, 142);
+
+    if (timeWarp > 1) {
+      const warpLabel = warpTarget !== null ? `WARP ${timeWarp}× →` : `WARP ${timeWarp}×`;
+      ctx.fillStyle = 'rgba(255, 200, 50, 0.9)';
+      ctx.fillText(warpLabel, 16, 136);
+      ctx.fillStyle = 'rgba(100, 210, 255, 0.55)';
+      ctx.fillText('W / ↑  burn to exit rails', 16, 160);
+    } else {
+      ctx.fillStyle = 'rgba(100, 210, 255, 0.55)';
+      ctx.fillText('W / ↑  burn to exit rails', 16, 142);
+    }
+
+    // Click-to-warp hint
+    if (timeWarp === 1) {
+      ctx.fillStyle = 'rgba(100, 210, 255, 0.4)';
+      ctx.font = '11px monospace';
+      ctx.fillText('click orbit to warp there', 16, 164);
+    }
   } else if (rocket.state === 'landed') {
     ctx.fillStyle = 'rgba(200,255,200,0.8)';
     ctx.fillText('W / ↑  launch', 16, 28);
@@ -109,6 +210,14 @@ function drawHUD() {
     ctx.font = '18px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('CRASHED — reload to retry', canvas.width / 2, canvas.height / 2 + 40);
+  }
+
+  // Warp keys hint (always visible when flying or rails)
+  if (rocket.state === 'flying' || rocket.state === 'rails') {
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText('. warp+    , warp−', canvas.width - 16, canvas.height - 16);
   }
 
   ctx.restore();
