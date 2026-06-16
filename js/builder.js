@@ -238,5 +238,89 @@ document.getElementById('nav-launch').addEventListener('click', () => {
   window.location.href = 'index.html';
 });
 
+// ── Save / Load designs ───────────────────────────────────────────────────────
+
+const DESIGNS_KEY = 'savedDesigns';
+
+function getSavedDesigns() {
+  try { return JSON.parse(localStorage.getItem(DESIGNS_KEY)) || []; }
+  catch { return []; }
+}
+
+function putSavedDesigns(designs) {
+  localStorage.setItem(DESIGNS_KEY, JSON.stringify(designs));
+}
+
+function saveDesign() {
+  const nameEl = document.getElementById('design-name');
+  const name   = nameEl.value.trim() || 'Untitled';
+  const designs = getSavedDesigns();
+  const existing = designs.findIndex(d => d.name === name);
+  const entry = { name, parts: placedParts.map(p => ({ ...p })), savedAt: Date.now() };
+  if (existing >= 0) designs[existing] = entry;
+  else designs.push(entry);
+  putSavedDesigns(designs);
+  renderSavedList();
+}
+
+function loadSavedDesign(index) {
+  const designs = getSavedDesigns();
+  if (!designs[index]) return;
+  placedParts = designs[index].parts.map(p => ({ ...p }));
+  document.getElementById('design-name').value = designs[index].name;
+  updateStats();
+}
+
+function deleteSavedDesign(index) {
+  const designs = getSavedDesigns();
+  designs.splice(index, 1);
+  putSavedDesigns(designs);
+  renderSavedList();
+}
+
+function renderSavedList() {
+  const list    = document.getElementById('saved-list');
+  const designs = getSavedDesigns();
+  list.innerHTML = '';
+  if (designs.length === 0) {
+    const p = document.createElement('p');
+    p.className   = 'no-designs';
+    p.textContent = 'No saved designs';
+    list.appendChild(p);
+    return;
+  }
+  designs.forEach((d, i) => {
+    const row = document.createElement('div');
+    row.className = 'design-row';
+    row.innerHTML =
+      `<span class="design-row-name">${d.name}</span>` +
+      `<div class="design-row-actions">` +
+        `<button class="design-load">LOAD</button>` +
+        `<button class="design-del">✕</button>` +
+      `</div>`;
+    row.querySelector('.design-load').addEventListener('click', () => { loadSavedDesign(i); renderSavedList(); });
+    row.querySelector('.design-del').addEventListener('click', () => deleteSavedDesign(i));
+    list.appendChild(row);
+  });
+}
+
+document.getElementById('save-btn').addEventListener('click', saveDesign);
+document.getElementById('design-name').addEventListener('keydown', e => {
+  if (e.key === 'Enter') saveDesign();
+});
+
+// Restore builder state from last active design on page load
+(function restoreDesign() {
+  try {
+    const saved = localStorage.getItem('rocketDesign');
+    if (saved) {
+      const d = JSON.parse(saved);
+      if (Array.isArray(d.parts) && d.parts.length > 0)
+        placedParts = d.parts.map(p => ({ ...p }));
+    }
+  } catch { /* ignore corrupt data */ }
+})();
+
 updateStats();
+renderSavedList();
 requestAnimationFrame(render);

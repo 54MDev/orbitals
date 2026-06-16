@@ -23,3 +23,5 @@ export const ROCKET = {
   LENGTH: 1_000,          // meters (game scale — visible at surface zoom)
   WIDTH: 350,             // meters
 };
+
+export const PHYSICS_BUBBLE_RADIUS = 5_000; // m — dropped stages within this range exit rails

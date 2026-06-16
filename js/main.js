@@ -3,9 +3,10 @@ import { Camera } from './Camera.js';
 import { Planet } from './Planet.js';
 import { Starfield } from './Starfield.js';
 import { Rocket } from './Rocket.js';
+import { Stage } from './Stage.js';
 import { Input } from './Input.js';
 import { Trajectory, ORBIT_SAMPLES } from './Trajectory.js';
-import { PLANET, ROCKET } from './constants.js';
+import { PLANET, ROCKET, PHYSICS_BUBBLE_RADIUS } from './constants.js';
 
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -23,6 +24,7 @@ const starfield = new Starfield();
 const rocket = new Rocket();
 const input = new Input();
 const trajectory = new Trajectory();
+const droppedStages = [];
 
 camera.target = rocket;
 
@@ -58,6 +60,13 @@ function decreaseWarp() {
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Period') increaseWarp();
   if (e.code === 'Comma')  decreaseWarp();
+
+  if (e.code === 'Space' && (rocket.state === 'flying' || rocket.state === 'rails')) {
+    e.preventDefault();
+    // rocket.x/y/vx/vy are always kept current (synced each frame on rails too).
+    const data = rocket.doStage();
+    if (data) droppedStages.push(new Stage(data));
+  }
 });
 
 // Given a target true anomaly on the current rails orbit, return the next simTime
@@ -138,6 +147,16 @@ function update(dt) {
   }
 
   rocket.update(wdt, input);
+
+  for (const stage of droppedStages) {
+    stage.update(wdt);
+    // Physics bubble: if a rails stage drifts close to the active rocket, restore Newtonian.
+    if (stage.state === 'rails') {
+      const dist = Math.hypot(rocket.x - stage.x, rocket.y - stage.y);
+      if (dist < PHYSICS_BUBBLE_RADIUS) stage.exitRails();
+    }
+  }
+
   camera.update();
   trajectory.compute(rocket);
 
@@ -156,6 +175,30 @@ function update(dt) {
   }
 }
 
+const VAB_CENTER_X = -6_000;   // world-space m; right edge sits ~4 km left of launchpad
+const VAB_W        = 4_000;    // m — 4× rocket width
+const VAB_H        = 2_500;    // m — 2.5× rocket height
+
+function drawVAB(ctx, camera, canvasWidth, canvasHeight) {
+  const base = PLANET.RADIUS;
+  const bl = camera.worldToScreen(VAB_CENTER_X - VAB_W / 2, base,         canvasWidth, canvasHeight);
+  const br = camera.worldToScreen(VAB_CENTER_X + VAB_W / 2, base,         canvasWidth, canvasHeight);
+  const tr = camera.worldToScreen(VAB_CENTER_X + VAB_W / 2, base + VAB_H, canvasWidth, canvasHeight);
+  const tl = camera.worldToScreen(VAB_CENTER_X - VAB_W / 2, base + VAB_H, canvasWidth, canvasHeight);
+
+  ctx.beginPath();
+  ctx.moveTo(bl.x, bl.y);
+  ctx.lineTo(br.x, br.y);
+  ctx.lineTo(tr.x, tr.y);
+  ctx.lineTo(tl.x, tl.y);
+  ctx.closePath();
+  ctx.fillStyle = '#4a4f58';
+  ctx.fill();
+  ctx.strokeStyle = '#6a707c';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
 function render() {
   ctx.fillStyle = '#00000a';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -169,7 +212,9 @@ function render() {
   ctx.rotate(-camera.rotation);
   ctx.translate(-canvas.width / 2, -canvas.height / 2);
   planet.draw(ctx, camera, canvas.width, canvas.height);
+  drawVAB(ctx, camera, canvas.width, canvas.height);
   trajectory.draw(ctx, camera, canvas.width, canvas.height);
+  for (const stage of droppedStages) stage.draw(ctx, camera, canvas.width, canvas.height);
   rocket.draw(ctx, camera, canvas.width, canvas.height);
   ctx.restore();
 
@@ -194,9 +239,16 @@ function drawHUD() {
     ctx.fillText(`SPD  ${spd.toFixed(0)} m/s`, 16, 46);
     ctx.fillText(`FUEL ${fuel}%`, 16, 64);
     ctx.fillText(`THR  ${(rocket.throttle * 100).toFixed(0)}%`, 16, 82);
+    let hudY = 100;
+    if (rocket.canStage()) {
+      ctx.fillStyle = 'rgba(255, 220, 80, 0.85)';
+      ctx.fillText(`STG  ${rocket.activeParts.filter(p => p.type === 'decoupler').length}  [SPACE]`, 16, hudY);
+      hudY += 18;
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    }
     if (timeWarp > 1) {
       ctx.fillStyle = 'rgba(255, 200, 50, 0.9)';
-      ctx.fillText(`WARP ${timeWarp}×`, 16, 100);
+      ctx.fillText(`WARP ${timeWarp}×`, 16, hudY);
     }
   } else if (rocket.state === 'rails') {
     const { a, e, n } = rocket.railsElements;
