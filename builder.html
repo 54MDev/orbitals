@@ -133,11 +133,14 @@
       cursor: pointer;
       border-radius: 2px;
       text-align: center;
-      text-decoration: none;
     }
-    #nav-launch:hover {
+    #nav-launch:hover:not(:disabled) {
       background: rgba(40, 170, 90, 0.15);
       border-color: rgba(40, 170, 90, 0.45);
+    }
+    #nav-launch:disabled {
+      opacity: 0.3;
+      cursor: default;
     }
 
     #hint {
@@ -190,7 +193,7 @@
 
     <button id="clear-btn">CLEAR ALL</button>
 
-    <a id="nav-launch" href="index.html">LAUNCH</a>
+    <button id="nav-launch" disabled>LAUNCH</button>
 
     <p id="hint">Click to place<br>Right-click to remove</p>
   </aside>

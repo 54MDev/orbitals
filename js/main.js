@@ -113,7 +113,7 @@ canvas.addEventListener('click', (e) => {
 });
 
 function update(dt) {
-  if (dev.infiniteFuel) rocket.fuelMass = ROCKET.FUEL_MASS;
+  if (dev.infiniteFuel) rocket.fuelMass = rocket.initialFuelMass;
 
   // Cap warp to valid levels for current state
   const levels = warpLevels();
@@ -187,7 +187,7 @@ function drawHUD() {
     const r = Math.hypot(rocket.x, rocket.y);
     const alt = (r - PLANET.RADIUS) / 1000;
     const spd = Math.hypot(rocket.vx, rocket.vy);
-    const fuel = (rocket.fuelMass / ROCKET.FUEL_MASS * 100).toFixed(0);
+    const fuel = (rocket.fuelMass / rocket.initialFuelMass * 100).toFixed(0);
 
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     ctx.fillText(`ALT  ${alt.toFixed(1)} km`, 16, 28);

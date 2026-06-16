@@ -8,7 +8,7 @@ export const PLANET = {
 
 export const CAMERA = {
   MIN_LOG_ZOOM: Math.log(5e-6),   // zoomed way out
-  MAX_LOG_ZOOM: Math.log(5e-2),   // close to surface
+  MAX_LOG_ZOOM: Math.log(5e-1),   // close to surface
 };
 
 export const FIXED_DT = 1 / 60;  // seconds

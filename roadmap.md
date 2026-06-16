@@ -112,6 +112,26 @@ Each phase builds on the last. Nothing in a later phase should be started until 
   - By adding a "Launch" button in the builder that validates, saves, and redirects to `index.html`
   - By adding a "Back to Builder" button in the flight screen
 
+### Phase 6d: Visual Rocket Rendering
+
+- **Extract part draw functions to a shared module**
+  - By moving `drawPod`, `drawTank`, `drawEngine`, `drawDecoupler` and `PART_DEFS` out of `builder.js` into a new `js/parts.js` ES module
+  - By importing `js/parts.js` in both `builder.js` and `Rocket.js` so the same drawing code is used in both contexts
+
+- **Derive rocket geometry from the builder design**
+  - By computing the total grid span (min row to max row + part height, min col to max col + part width) from the saved part list
+  - By mapping grid units to world-space meters so the rocket's total height equals `ROCKET.LENGTH` and width equals `ROCKET.WIDTH`; these become derived values rather than hardcoded constants
+
+- **Render the assembled design in flight**
+  - By replacing the hardcoded triangle in `Rocket.draw()` with a loop over the saved parts array
+  - By computing each part's local offset from the rocket's center (in world-space units) and passing it to the shared draw function within the already-rotated canvas context (`ctx.save → ctx.translate → ctx.rotate`)
+  - By using the rocket's center of mass as the rotation pivot — initially approximated as the geometric center of the bounding box; exact CoM from part masses can come later
+
+- **Keep the triangle as a fallback**
+  - By rendering the original triangle when no builder design is saved, so the flight screen still works standalone
+
+---
+
 ### Phase 6c: Save & Load Designs
 
 - **Persist and manage multiple designs**
