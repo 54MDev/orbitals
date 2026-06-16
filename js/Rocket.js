@@ -33,6 +33,7 @@ export class Rocket {
     this.state = 'landed';  // 'flying' | 'landed' | 'crashed' | 'rails'
     this.simTime = 0;       // seconds elapsed since game start
     this.railsElements = null;
+    this.sas = false;
   }
 
   get mass() { return this.dryMass + this.fuelMass; }
@@ -134,8 +135,10 @@ export class Rocket {
 
     // --- Keplerian rails ---
     if (this.state === 'rails') {
-      if (input.held('ArrowLeft')  || input.held('KeyA')) this.rotation -= ROCKET.ROTATION_SPEED * dt;
-      if (input.held('ArrowRight') || input.held('KeyD')) this.rotation += ROCKET.ROTATION_SPEED * dt;
+      if (!this.sas) {
+        if (input.held('ArrowLeft')  || input.held('KeyA')) this.rotation -= ROCKET.ROTATION_SPEED * dt;
+        if (input.held('ArrowRight') || input.held('KeyD')) this.rotation += ROCKET.ROTATION_SPEED * dt;
+      }
 
       // Throttle-up exits rails and resumes Newtonian integration
       if ((input.held('ArrowUp') || input.held('KeyW')) && this.fuelMass > 0) {
@@ -153,8 +156,10 @@ export class Rocket {
     }
 
     // --- Newtonian flying ---
-    if (input.held('ArrowLeft')  || input.held('KeyA')) this.rotation -= ROCKET.ROTATION_SPEED * dt;
-    if (input.held('ArrowRight') || input.held('KeyD')) this.rotation += ROCKET.ROTATION_SPEED * dt;
+    if (!this.sas) {
+      if (input.held('ArrowLeft')  || input.held('KeyA')) this.rotation -= ROCKET.ROTATION_SPEED * dt;
+      if (input.held('ArrowRight') || input.held('KeyD')) this.rotation += ROCKET.ROTATION_SPEED * dt;
+    }
     if (input.held('ArrowUp')    || input.held('KeyW')) this.throttle = Math.min(1, this.throttle + 2 * dt);
     if (input.held('ArrowDown')  || input.held('KeyS')) this.throttle = Math.max(0, this.throttle - 2 * dt);
 

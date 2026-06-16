@@ -6,7 +6,7 @@ import { Rocket } from './Rocket.js';
 import { Stage } from './Stage.js';
 import { Input } from './Input.js';
 import { Trajectory, ORBIT_SAMPLES } from './Trajectory.js';
-import { PLANET, ROCKET, PHYSICS_BUBBLE_RADIUS } from './constants.js';
+import { PLANET, ROCKET, CAMERA, PHYSICS_BUBBLE_RADIUS } from './constants.js';
 
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -32,6 +32,10 @@ canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   camera.adjustZoom(e.deltaY);
 }, { passive: false });
+
+// --- Map view & SAS ---
+let mapView = false;
+let _mapSavedLogZoom = null;
 
 // --- Time warp ---
 const FLYING_WARPS = [1, 2, 3];
@@ -60,6 +64,17 @@ function decreaseWarp() {
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Period') increaseWarp();
   if (e.code === 'Comma')  decreaseWarp();
+
+  if (e.code === 'KeyT') rocket.sas = !rocket.sas;
+
+  if (e.code === 'KeyM') {
+    mapView = !mapView;
+    if (mapView) {
+      _mapSavedLogZoom = camera._logZoom;
+    } else if (_mapSavedLogZoom !== null) {
+      camera._logZoom = _mapSavedLogZoom;
+    }
+  }
 
   if (e.code === 'Space' && (rocket.state === 'flying' || rocket.state === 'rails')) {
     e.preventDefault();
@@ -160,18 +175,34 @@ function update(dt) {
   camera.update();
   trajectory.compute(rocket);
 
-  // Horizon lock: smoothly reorient to planet surface normal within 100 km
-  const rocketDist = Math.hypot(rocket.x, rocket.y);
-  const altKm = (rocketDist - PLANET.RADIUS) / 1000;
-  const horizonT = Math.max(0, Math.min(1, 1 - (altKm - 50) / 50));  // 0 at 100 km, 1 at ≤50 km
-  if (horizonT <= 0) {
+  if (mapView) {
+    camera.x = 0;
+    camera.y = 0;
     camera.rotation = 0;
+    // Zoom to fit the current orbit/planet with margin
+    let orbitRadius = PLANET.RADIUS * 1.4;
+    if (rocket.state === 'rails' && rocket.railsElements) {
+      orbitRadius = rocket.railsElements.a * (1 + rocket.railsElements.e) * 1.2;
+    } else if (trajectory.apoPoint) {
+      orbitRadius = (trajectory.apoPoint.altKm * 1000 + PLANET.RADIUS) * 1.2;
+    }
+    const minDim = Math.min(canvas.width, canvas.height);
+    camera._logZoom = Math.max(CAMERA.MIN_LOG_ZOOM, Math.min(CAMERA.MAX_LOG_ZOOM,
+      Math.log(minDim * 0.42 / orbitRadius)));
   } else {
-    // Angle from planet to rocket; rotate camera so that direction points screen-up
-    let target = Math.PI / 2 - Math.atan2(rocket.y, rocket.x);
-    // Normalize to [-π, π] so lerp from 0 takes the short path
-    target = ((target + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
-    camera.rotation = target * horizonT;
+    // Horizon lock: smoothly reorient to planet surface normal within 100 km
+    const rocketDist = Math.hypot(rocket.x, rocket.y);
+    const altKm = (rocketDist - PLANET.RADIUS) / 1000;
+    const horizonT = Math.max(0, Math.min(1, 1 - (altKm - 50) / 50));  // 0 at 100 km, 1 at ≤50 km
+    if (horizonT <= 0) {
+      camera.rotation = 0;
+    } else {
+      // Angle from planet to rocket; rotate camera so that direction points screen-up
+      let target = Math.PI / 2 - Math.atan2(rocket.y, rocket.x);
+      // Normalize to [-π, π] so lerp from 0 takes the short path
+      target = ((target + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+      camera.rotation = target * horizonT;
+    }
   }
 }
 
@@ -218,6 +249,24 @@ function render() {
   rocket.draw(ctx, camera, canvas.width, canvas.height);
   ctx.restore();
 
+  // Map view: draw position dots for rocket and dropped stages (they're sub-pixel at orbit zoom)
+  if (mapView) {
+    ctx.save();
+    for (const stage of droppedStages) {
+      const sp = camera.worldToScreen(stage.x, stage.y, canvas.width, canvas.height);
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(200, 200, 200, 0.7)';
+      ctx.fill();
+    }
+    const rsp = camera.worldToScreen(rocket.x, rocket.y, canvas.width, canvas.height);
+    ctx.beginPath();
+    ctx.arc(rsp.x, rsp.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.restore();
+  }
+
   // HUD and dev panel stay upright
   drawHUD();
   drawDevPanel();
@@ -228,22 +277,36 @@ function drawHUD() {
   ctx.font = '13px monospace';
   ctx.textAlign = 'left';
 
+  const LINE = 18;
+
   if (rocket.state === 'flying') {
     const r = Math.hypot(rocket.x, rocket.y);
     const alt = (r - PLANET.RADIUS) / 1000;
     const spd = Math.hypot(rocket.vx, rocket.vy);
     const fuel = (rocket.fuelMass / rocket.initialFuelMass * 100).toFixed(0);
 
+    let hudY = 28;
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillText(`ALT  ${alt.toFixed(1)} km`, 16, 28);
-    ctx.fillText(`SPD  ${spd.toFixed(0)} m/s`, 16, 46);
-    ctx.fillText(`FUEL ${fuel}%`, 16, 64);
-    ctx.fillText(`THR  ${(rocket.throttle * 100).toFixed(0)}%`, 16, 82);
-    let hudY = 100;
+    ctx.fillText(`ALT  ${alt.toFixed(1)} km`, 16, hudY); hudY += LINE;
+    ctx.fillText(`SPD  ${spd.toFixed(0)} m/s`,  16, hudY); hudY += LINE;
+    if (trajectory.apoPoint) {
+      ctx.fillText(`AP   ${trajectory.apoPoint.altKm.toFixed(1)} km`, 16, hudY); hudY += LINE;
+    }
+    if (trajectory.periPoint) {
+      ctx.fillText(`PE   ${trajectory.periPoint.altKm.toFixed(1)} km`, 16, hudY); hudY += LINE;
+    }
+    ctx.fillText(`FUEL ${fuel}%`, 16, hudY); hudY += LINE;
+    ctx.fillText(`THR  ${(rocket.throttle * 100).toFixed(0)}%`, 16, hudY); hudY += LINE;
+
+    if (rocket.sas) {
+      ctx.fillStyle = '#4df';
+      ctx.fillText('SAS  ON', 16, hudY); hudY += LINE;
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    }
     if (rocket.canStage()) {
       ctx.fillStyle = 'rgba(255, 220, 80, 0.85)';
       ctx.fillText(`STG  ${rocket.activeParts.filter(p => p.type === 'decoupler').length}  [SPACE]`, 16, hudY);
-      hudY += 18;
+      hudY += LINE;
       ctx.fillStyle = 'rgba(255,255,255,0.75)';
     }
     if (timeWarp > 1) {
@@ -258,30 +321,36 @@ function drawHUD() {
     const apoAlt  = (a * (1 + e) - PLANET.RADIUS) / 1000;
     const period  = (2 * Math.PI / n) / 60;
 
+    let hudY = 28;
     ctx.fillStyle = 'rgba(100, 210, 255, 0.9)';
-    ctx.fillText('— RAILS —', 16, 28);
-    ctx.fillText(`ALT  ${alt.toFixed(1)} km`, 16, 46);
-    ctx.fillText(`PE   ${periAlt.toFixed(1)} km`, 16, 64);
-    ctx.fillText(`AP   ${apoAlt.toFixed(1)} km`, 16, 82);
-    ctx.fillText(`PRD  ${period.toFixed(1)} min`, 16, 100);
-    ctx.fillText(`ECC  ${e.toFixed(4)}`, 16, 118);
+    ctx.fillText('— RAILS —', 16, hudY); hudY += LINE;
+    ctx.fillText(`ALT  ${alt.toFixed(1)} km`, 16, hudY); hudY += LINE;
+    ctx.fillText(`PE   ${periAlt.toFixed(1)} km`, 16, hudY); hudY += LINE;
+    ctx.fillText(`AP   ${apoAlt.toFixed(1)} km`, 16, hudY); hudY += LINE;
+    ctx.fillText(`PRD  ${period.toFixed(1)} min`, 16, hudY); hudY += LINE;
+    ctx.fillText(`ECC  ${e.toFixed(4)}`, 16, hudY); hudY += LINE;
+
+    if (rocket.sas) {
+      ctx.fillStyle = '#4df';
+      ctx.fillText('SAS  ON', 16, hudY); hudY += LINE;
+    }
 
     if (timeWarp > 1) {
       const warpLabel = warpTarget !== null ? `WARP ${timeWarp}× →` : `WARP ${timeWarp}×`;
       ctx.fillStyle = 'rgba(255, 200, 50, 0.9)';
-      ctx.fillText(warpLabel, 16, 136);
+      ctx.fillText(warpLabel, 16, hudY); hudY += LINE;
       ctx.fillStyle = 'rgba(100, 210, 255, 0.55)';
-      ctx.fillText('W / ↑  burn to exit rails', 16, 160);
+      ctx.fillText('W / ↑  burn to exit rails', 16, hudY); hudY += LINE;
     } else {
       ctx.fillStyle = 'rgba(100, 210, 255, 0.55)';
-      ctx.fillText('W / ↑  burn to exit rails', 16, 142);
+      ctx.fillText('W / ↑  burn to exit rails', 16, hudY); hudY += LINE;
     }
 
     // Click-to-warp hint
     if (timeWarp === 1) {
       ctx.fillStyle = 'rgba(100, 210, 255, 0.4)';
       ctx.font = '11px monospace';
-      ctx.fillText('click orbit to warp there', 16, 164);
+      ctx.fillText('click orbit to warp there', 16, hudY);
     }
   } else if (rocket.state === 'landed') {
     ctx.fillStyle = 'rgba(200,255,200,0.8)';
@@ -295,11 +364,20 @@ function drawHUD() {
     ctx.fillText('CRASHED — reload to retry', canvas.width / 2, canvas.height / 2 + 40);
   }
 
-  // Warp keys hint (always visible when flying or rails)
+  // Map view label
+  if (mapView) {
+    ctx.fillStyle = 'rgba(100, 255, 200, 0.85)';
+    ctx.font = '13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('— MAP VIEW —', canvas.width / 2, 24);
+  }
+
+  // Warp + SAS + map key hints (always visible when flying or rails)
   if (rocket.state === 'flying' || rocket.state === 'rails') {
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
     ctx.font = '11px monospace';
     ctx.textAlign = 'right';
+    ctx.fillText('T sas   M map', canvas.width - 16, canvas.height - 32);
     ctx.fillText('. warp+    , warp−', canvas.width - 16, canvas.height - 16);
   }
 
