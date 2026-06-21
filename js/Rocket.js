@@ -8,6 +8,9 @@ export class Rocket {
   constructor() {
     let design = null;
     try { design = JSON.parse(localStorage.getItem('rocketDesign')); } catch {}
+    if (design && (design.gridVersion || 1) < 2 && Array.isArray(design.parts)) {
+      design = { ...design, parts: design.parts.map(p => ({ ...p, col: p.col * 2, row: p.row * 2 })) };
+    }
 
     this.x = 0;
     this.y = PLANET.RADIUS + ROCKET.LENGTH / 2;  // center is mid-rocket; base sits on surface

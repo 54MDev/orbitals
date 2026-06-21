@@ -1,21 +1,33 @@
+const PART_IMGS = {};
+for (const [name, src] of [
+  ['pod',       'assets/pod.png'],
+  ['tank',      'assets/tank.png'],
+  ['engine',    'assets/engine.png'],
+  ['decoupler', 'assets/decoupler.png'],
+]) {
+  const img = new Image();
+  img.src = src;
+  PART_IMGS[name] = img;
+}
+
 export const PART_DEFS = {
   pod: {
-    w: 1, h: 2,
+    w: 2, h: 4,
     dryMass: 800,
   },
   tank: {
-    w: 1, h: 3,
+    w: 2, h: 6,
     dryMass: 200,
     fuelMass: 1_800,
   },
   engine: {
-    w: 1, h: 2,
+    w: 2, h: 4,
     dryMass: 300,
     thrust: 150_000,
     isp: 300,
   },
   decoupler: {
-    w: 1, h: 1,
+    w: 2, h: 2,
     dryMass: 50,
   },
 };
@@ -26,6 +38,12 @@ export const PART_DEFS = {
 export function drawPod(ctx, px, py, cw, ch, alpha) {
   ctx.save();
   ctx.globalAlpha = alpha;
+  const img = PART_IMGS.pod;
+  if (img.complete && img.naturalWidth) {
+    ctx.drawImage(img, px, py, cw, ch);
+    ctx.restore();
+    return;
+  }
 
   const bx = px + cw * 0.15, bw = cw * 0.7;
   const by = py + ch * 0.38, bh = ch * 0.62;
@@ -62,6 +80,12 @@ export function drawPod(ctx, px, py, cw, ch, alpha) {
 export function drawTank(ctx, px, py, cw, ch, alpha) {
   ctx.save();
   ctx.globalAlpha = alpha;
+  const img = PART_IMGS.tank;
+  if (img.complete && img.naturalWidth) {
+    ctx.drawImage(img, px, py, cw, ch);
+    ctx.restore();
+    return;
+  }
 
   const pad = cw * 0.12;
   const tx  = px + pad, tw = cw - pad * 2;
@@ -93,6 +117,12 @@ export function drawTank(ctx, px, py, cw, ch, alpha) {
 export function drawEngine(ctx, px, py, cw, ch, alpha) {
   ctx.save();
   ctx.globalAlpha = alpha;
+  const img = PART_IMGS.engine;
+  if (img.complete && img.naturalWidth) {
+    ctx.drawImage(img, px, py, cw, ch);
+    ctx.restore();
+    return;
+  }
 
   const splitY = py + ch * 0.5;
 
@@ -132,6 +162,12 @@ export function drawEngine(ctx, px, py, cw, ch, alpha) {
 export function drawDecoupler(ctx, px, py, cw, ch, alpha) {
   ctx.save();
   ctx.globalAlpha = alpha;
+  const img = PART_IMGS.decoupler;
+  if (img.complete && img.naturalWidth) {
+    ctx.drawImage(img, px, py, cw, ch);
+    ctx.restore();
+    return;
+  }
 
   const pad = cw * 0.06;
   const bh  = ch * 0.5;
