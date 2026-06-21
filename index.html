@@ -39,11 +39,40 @@
       color: #aad0ff;
       border-color: rgba(70, 120, 200, 0.6);
     }
+    #map-context-menu {
+      display: none;
+      position: fixed;
+      background: rgba(8, 12, 22, 0.94);
+      border: 1px solid rgba(100, 180, 255, 0.28);
+      border-radius: 3px;
+      padding: 4px 0;
+      z-index: 200;
+      font-family: monospace;
+      font-size: 12px;
+      min-width: 110px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.6);
+    }
+    #map-context-menu button {
+      display: block;
+      width: 100%;
+      padding: 7px 16px;
+      background: none;
+      border: none;
+      color: rgba(190, 215, 255, 0.9);
+      cursor: pointer;
+      text-align: left;
+      letter-spacing: 1px;
+    }
+    #map-context-menu button:hover {
+      background: rgba(100, 180, 255, 0.14);
+      color: #c8e0ff;
+    }
   </style>
 </head>
 <body>
   <a id="nav-builder" href="builder.html">VAB</a>
   <canvas id="canvas"></canvas>
+  <div id="map-context-menu"></div>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

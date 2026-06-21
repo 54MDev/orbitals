@@ -28,14 +28,157 @@ const droppedStages = [];
 
 camera.target = rocket;
 
+// --- Map camera (independent of flight camera) ---
+const mapCam = {
+  x: 0,
+  y: 0,
+  _logZoom: Math.log(5e-6),
+  rotation: 0,
+  lockTarget: 'rocket', // 'rocket' | 'planet' | null
+  get zoom() { return Math.exp(this._logZoom); },
+  adjustZoom(deltaY) {
+    this._logZoom -= deltaY * 0.001;
+    this._logZoom = Math.max(CAMERA.MIN_LOG_ZOOM, Math.min(CAMERA.MAX_LOG_ZOOM, this._logZoom));
+  },
+  worldToScreen(wx, wy, W, H) {
+    return {
+      x: (wx - this.x) * this.zoom + W / 2,
+      y: -(wy - this.y) * this.zoom + H / 2,
+    };
+  },
+  screenToWorld(sx, sy, W, H) {
+    return {
+      x: (sx - W / 2) / this.zoom + this.x,
+      y: -((sy - H / 2) / this.zoom) + this.y,
+    };
+  },
+};
+
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
-  camera.adjustZoom(e.deltaY);
+  if (mapView) {
+    mapCam.adjustZoom(e.deltaY);
+  } else {
+    camera.adjustZoom(e.deltaY);
+  }
 }, { passive: false });
 
 // --- Map view & SAS ---
 let mapView = false;
 let _mapSavedLogZoom = null;
+
+function initMapCamera() {
+  _mapSavedLogZoom = camera._logZoom;
+  let orbitRadius = PLANET.RADIUS * 1.4;
+  if (rocket.state === 'rails' && rocket.railsElements) {
+    orbitRadius = rocket.railsElements.a * (1 + rocket.railsElements.e) * 1.2;
+  } else if (trajectory.apoPoint) {
+    orbitRadius = (trajectory.apoPoint.altKm * 1000 + PLANET.RADIUS) * 1.2;
+  }
+  const minDim = Math.min(canvas.width, canvas.height);
+  mapCam._logZoom = Math.max(CAMERA.MIN_LOG_ZOOM, Math.min(CAMERA.MAX_LOG_ZOOM,
+    Math.log(minDim * 0.42 / orbitRadius)));
+  mapCam.x = rocket.x;
+  mapCam.y = rocket.y;
+  mapCam.lockTarget = 'rocket';
+}
+
+// --- Map context menu ---
+const mapContextMenu = document.getElementById('map-context-menu');
+
+function showContextMenu(cx, cy, items) {
+  mapContextMenu.innerHTML = '';
+  for (const item of items) {
+    const btn = document.createElement('button');
+    btn.textContent = item.label;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      item.action();
+      hideContextMenu();
+    });
+    mapContextMenu.appendChild(btn);
+  }
+  mapContextMenu.style.display = 'block';
+  mapContextMenu.style.left = cx + 'px';
+  mapContextMenu.style.top = cy + 'px';
+}
+
+function hideContextMenu() {
+  mapContextMenu.style.display = 'none';
+}
+
+document.addEventListener('click', (e) => {
+  if (!mapContextMenu.contains(e.target)) hideContextMenu();
+});
+
+// --- Map drag (pan) ---
+let mapDrag = null;
+let mapDragMoved = false;
+
+const MAP_HIT_RADIUS = 12; // px — click detection radius for rocket / planet dots
+
+function getMapHitTarget(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = clientX - rect.left;
+  const sy = clientY - rect.top;
+
+  const rsp = mapCam.worldToScreen(rocket.x, rocket.y, canvas.width, canvas.height);
+  if (Math.hypot(sx - rsp.x, sy - rsp.y) < MAP_HIT_RADIUS) return 'rocket';
+
+  const psp = mapCam.worldToScreen(0, 0, canvas.width, canvas.height);
+  if (Math.hypot(sx - psp.x, sy - psp.y) < MAP_HIT_RADIUS) return 'planet';
+
+  return null;
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  if (!mapView || e.button !== 0) return;
+  mapDrag = { startX: e.clientX, startY: e.clientY, camX: mapCam.x, camY: mapCam.y };
+  mapDragMoved = false;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!mapDrag) return;
+  const dx = e.clientX - mapDrag.startX;
+  const dy = e.clientY - mapDrag.startY;
+  if (!mapDragMoved && Math.hypot(dx, dy) > 4) {
+    mapDragMoved = true;
+    mapCam.lockTarget = null;
+    hideContextMenu();
+  }
+  if (mapDragMoved) {
+    mapCam.x = mapDrag.camX - dx / mapCam.zoom;
+    mapCam.y = mapDrag.camY + dy / mapCam.zoom;
+  }
+});
+
+canvas.addEventListener('mouseup', (e) => {
+  if (!mapView || !mapDrag || e.button !== 0) { mapDrag = null; return; }
+  if (!mapDragMoved) {
+    const target = getMapHitTarget(e.clientX, e.clientY);
+    if (target && mapCam.lockTarget !== target) {
+      showContextMenu(e.clientX, e.clientY, [
+        { label: 'Lock View', action: () => { mapCam.lockTarget = target; } },
+      ]);
+    } else {
+      hideContextMenu();
+    }
+  }
+  mapDrag = null;
+});
+
+canvas.addEventListener('contextmenu', (e) => {
+  if (!mapView) return;
+  e.preventDefault();
+  const target = getMapHitTarget(e.clientX, e.clientY);
+  if (target && mapCam.lockTarget === target) {
+    showContextMenu(e.clientX, e.clientY, [
+      { label: 'Unlock', action: () => { mapCam.lockTarget = null; } },
+    ]);
+  } else {
+    hideContextMenu();
+  }
+});
 
 // --- Time warp ---
 const FLYING_WARPS = [1, 2, 3];
@@ -70,15 +213,18 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') {
     mapView = !mapView;
     if (mapView) {
-      _mapSavedLogZoom = camera._logZoom;
-    } else if (_mapSavedLogZoom !== null) {
-      camera._logZoom = _mapSavedLogZoom;
+      initMapCamera();
+    } else {
+      if (_mapSavedLogZoom !== null) {
+        camera._logZoom = _mapSavedLogZoom;
+        _mapSavedLogZoom = null;
+      }
+      hideContextMenu();
     }
   }
 
   if (e.code === 'Space' && (rocket.state === 'flying' || rocket.state === 'rails')) {
     e.preventDefault();
-    // rocket.x/y/vx/vy are always kept current (synced each frame on rails too).
     const data = rocket.doStage();
     if (data) droppedStages.push(new Stage(data));
   }
@@ -92,15 +238,17 @@ function nuToSimTime(nu, els) {
   const M_target  = ((E - e * Math.sin(E)) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
   const M_current = ((M0 + n * (rocket.simTime - t_epoch)) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
   let dM = M_target - M_current;
-  if (dM <= 1e-4) dM += 2 * Math.PI;  // always warp forward; tiny dM → next orbit
+  if (dM <= 1e-4) dM += 2 * Math.PI;
   return rocket.simTime + dM / n;
 }
 
 // --- Dev panel ---
 const dev = { infiniteFuel: false };
-const _devButtons = [];  // populated each frame by drawDevPanel()
+const _devButtons = [];
 
 canvas.addEventListener('click', (e) => {
+  if (mapView) { e.stopPropagation(); return; }  // map clicks handled via mouseup; stop doc listener
+
   const rect = canvas.getBoundingClientRect();
   const cx = e.clientX - rect.left;
   const cy = e.clientY - rect.top;
@@ -112,8 +260,7 @@ canvas.addEventListener('click', (e) => {
     }
   }
 
-  // Rails click-to-warp: find nearest trajectory point within ~20 px
-  // Unrotate click coords to match the unrotated worldToScreen space
+  // Rails click-to-warp
   const ddx = cx - canvas.width / 2;
   const ddy = cy - canvas.height / 2;
   const cosR = Math.cos(camera.rotation);
@@ -139,13 +286,11 @@ canvas.addEventListener('click', (e) => {
 function update(dt) {
   if (dev.infiniteFuel) rocket.fuelMass = rocket.initialFuelMass;
 
-  // Cap warp to valid levels for current state
   const levels = warpLevels();
   if (!levels.includes(timeWarp)) timeWarp = levels[levels.length - 1];
 
   let wdt = dt * timeWarp;
 
-  // Stop at warp target (rails click-to-warp)
   if (warpTarget !== null && rocket.state === 'rails') {
     const remaining = warpTarget - rocket.simTime;
     if (remaining <= wdt) {
@@ -155,7 +300,6 @@ function update(dt) {
     }
   }
 
-  // Reset warp if we leave rails
   if (rocket.state !== 'rails' && timeWarp > 3) {
     timeWarp = 1;
     warpTarget = null;
@@ -165,7 +309,6 @@ function update(dt) {
 
   for (const stage of droppedStages) {
     stage.update(wdt);
-    // Physics bubble: if a rails stage drifts close to the active rocket, restore Newtonian.
     if (stage.state === 'rails') {
       const dist = Math.hypot(rocket.x - stage.x, rocket.y - stage.y);
       if (dist < PHYSICS_BUBBLE_RADIUS) stage.exitRails();
@@ -176,46 +319,39 @@ function update(dt) {
   trajectory.compute(rocket);
 
   if (mapView) {
-    camera.x = 0;
-    camera.y = 0;
-    camera.rotation = 0;
-    // Zoom to fit the current orbit/planet with margin
-    let orbitRadius = PLANET.RADIUS * 1.4;
-    if (rocket.state === 'rails' && rocket.railsElements) {
-      orbitRadius = rocket.railsElements.a * (1 + rocket.railsElements.e) * 1.2;
-    } else if (trajectory.apoPoint) {
-      orbitRadius = (trajectory.apoPoint.altKm * 1000 + PLANET.RADIUS) * 1.2;
+    // Track locked target
+    if (mapCam.lockTarget === 'rocket') {
+      mapCam.x = rocket.x;
+      mapCam.y = rocket.y;
+    } else if (mapCam.lockTarget === 'planet') {
+      mapCam.x = 0;
+      mapCam.y = 0;
     }
-    const minDim = Math.min(canvas.width, canvas.height);
-    camera._logZoom = Math.max(CAMERA.MIN_LOG_ZOOM, Math.min(CAMERA.MAX_LOG_ZOOM,
-      Math.log(minDim * 0.42 / orbitRadius)));
   } else {
     // Horizon lock: smoothly reorient to planet surface normal within 100 km
     const rocketDist = Math.hypot(rocket.x, rocket.y);
     const altKm = (rocketDist - PLANET.RADIUS) / 1000;
-    const horizonT = Math.max(0, Math.min(1, 1 - (altKm - 50) / 50));  // 0 at 100 km, 1 at ≤50 km
+    const horizonT = Math.max(0, Math.min(1, 1 - (altKm - 50) / 50));
     if (horizonT <= 0) {
       camera.rotation = 0;
     } else {
-      // Angle from planet to rocket; rotate camera so that direction points screen-up
       let target = Math.PI / 2 - Math.atan2(rocket.y, rocket.x);
-      // Normalize to [-π, π] so lerp from 0 takes the short path
       target = ((target + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
       camera.rotation = target * horizonT;
     }
   }
 }
 
-const VAB_CENTER_X = -6_000;   // world-space m; right edge sits ~4 km left of launchpad
-const VAB_W        = 4_000;    // m — 4× rocket width
-const VAB_H        = 2_500;    // m — 2.5× rocket height
+const VAB_CENTER_X = -6_000;
+const VAB_W        = 4_000;
+const VAB_H        = 2_500;
 
-function drawVAB(ctx, camera, canvasWidth, canvasHeight) {
+function drawVAB(ctx, cam, canvasWidth, canvasHeight) {
   const base = PLANET.RADIUS;
-  const bl = camera.worldToScreen(VAB_CENTER_X - VAB_W / 2, base,         canvasWidth, canvasHeight);
-  const br = camera.worldToScreen(VAB_CENTER_X + VAB_W / 2, base,         canvasWidth, canvasHeight);
-  const tr = camera.worldToScreen(VAB_CENTER_X + VAB_W / 2, base + VAB_H, canvasWidth, canvasHeight);
-  const tl = camera.worldToScreen(VAB_CENTER_X - VAB_W / 2, base + VAB_H, canvasWidth, canvasHeight);
+  const bl = cam.worldToScreen(VAB_CENTER_X - VAB_W / 2, base,         canvasWidth, canvasHeight);
+  const br = cam.worldToScreen(VAB_CENTER_X + VAB_W / 2, base,         canvasWidth, canvasHeight);
+  const tr = cam.worldToScreen(VAB_CENTER_X + VAB_W / 2, base + VAB_H, canvasWidth, canvasHeight);
+  const tl = cam.worldToScreen(VAB_CENTER_X - VAB_W / 2, base + VAB_H, canvasWidth, canvasHeight);
 
   ctx.beginPath();
   ctx.moveTo(bl.x, bl.y);
@@ -231,43 +367,55 @@ function drawVAB(ctx, camera, canvasWidth, canvasHeight) {
 }
 
 function render() {
+  const activeCam = mapView ? mapCam : camera;
+
   ctx.fillStyle = '#00000a';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Starfield stays fixed (stars don't spin as the camera reorients)
   starfield.draw(ctx, canvas.width, canvas.height);
 
-  // World layer: rotate around screen center to lock horizon when near surface
   ctx.save();
   ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.rotate(-camera.rotation);
+  ctx.rotate(-activeCam.rotation);
   ctx.translate(-canvas.width / 2, -canvas.height / 2);
-  planet.draw(ctx, camera, canvas.width, canvas.height);
-  drawVAB(ctx, camera, canvas.width, canvas.height);
-  trajectory.draw(ctx, camera, canvas.width, canvas.height);
-  for (const stage of droppedStages) stage.draw(ctx, camera, canvas.width, canvas.height);
-  rocket.draw(ctx, camera, canvas.width, canvas.height);
+
+  planet.draw(ctx, activeCam, canvas.width, canvas.height);
+
+  if (!mapView) {
+    drawVAB(ctx, activeCam, canvas.width, canvas.height);
+    for (const stage of droppedStages) stage.draw(ctx, activeCam, canvas.width, canvas.height);
+    rocket.draw(ctx, activeCam, canvas.width, canvas.height);
+    rocket.drawVelocityArrow(ctx, activeCam, canvas.width, canvas.height);
+  } else {
+    trajectory.draw(ctx, activeCam, canvas.width, canvas.height);
+  }
+
   ctx.restore();
 
-  // Map view: draw position dots for rocket and dropped stages (they're sub-pixel at orbit zoom)
+  // Map view: position dots for rocket and dropped stages
   if (mapView) {
     ctx.save();
     for (const stage of droppedStages) {
-      const sp = camera.worldToScreen(stage.x, stage.y, canvas.width, canvas.height);
+      const sp = mapCam.worldToScreen(stage.x, stage.y, canvas.width, canvas.height);
       ctx.beginPath();
       ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(200, 200, 200, 0.7)';
       ctx.fill();
     }
-    const rsp = camera.worldToScreen(rocket.x, rocket.y, canvas.width, canvas.height);
+    const rsp = mapCam.worldToScreen(rocket.x, rocket.y, canvas.width, canvas.height);
+    const rdx = Math.sin(rocket.rotation);   // nose direction in map screen space
+    const rdy = -Math.cos(rocket.rotation);
+    const rpx = -rdy, rpy = rdx;  // perpendicular
     ctx.beginPath();
-    ctx.arc(rsp.x, rsp.y, 4, 0, Math.PI * 2);
+    ctx.moveTo(rsp.x + rdx * 7,            rsp.y + rdy * 7);
+    ctx.lineTo(rsp.x - rdx * 4 + rpx * 4,  rsp.y - rdy * 4 + rpy * 4);
+    ctx.lineTo(rsp.x - rdx * 4 - rpx * 4,  rsp.y - rdy * 4 - rpy * 4);
+    ctx.closePath();
     ctx.fillStyle = '#fff';
     ctx.fill();
     ctx.restore();
   }
 
-  // HUD and dev panel stay upright
   drawHUD();
   drawDevPanel();
 }
@@ -346,7 +494,6 @@ function drawHUD() {
       ctx.fillText('W / ↑  burn to exit rails', 16, hudY); hudY += LINE;
     }
 
-    // Click-to-warp hint
     if (timeWarp === 1) {
       ctx.fillStyle = 'rgba(100, 210, 255, 0.4)';
       ctx.font = '11px monospace';
@@ -364,7 +511,6 @@ function drawHUD() {
     ctx.fillText('CRASHED — reload to retry', canvas.width / 2, canvas.height / 2 + 40);
   }
 
-  // Map view label
   if (mapView) {
     ctx.fillStyle = 'rgba(100, 255, 200, 0.85)';
     ctx.font = '13px monospace';
@@ -372,7 +518,6 @@ function drawHUD() {
     ctx.fillText('— MAP VIEW —', canvas.width / 2, 24);
   }
 
-  // Warp + SAS + map key hints (always visible when flying or rails)
   if (rocket.state === 'flying' || rocket.state === 'rails') {
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
     ctx.font = '11px monospace';

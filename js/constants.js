@@ -9,6 +9,11 @@ export const PLANET = {
 export const CAMERA = {
   MIN_LOG_ZOOM: Math.log(5e-6),   // zoomed way out
   MAX_LOG_ZOOM: Math.log(5e-1),   // close to surface
+  VELOCITY_ARROW_MIN_ROCKET_PX: 15,   // hide velocity arrow when rocket on-screen length < this
+  VELOCITY_ARROW_OFFSET_PX: 50,       // screen-px gap between hull edge and arrow base
+  VELOCITY_ARROW_MAX_PX: 100,         // max arrow screen length
+  VELOCITY_ARROW_SPEED_MAX: 10_000,   // m/s at which arrow reaches max length
+  VELOCITY_ARROW_MIN_PX: 20,          // min arrow screen length when speed > 0
 };
 
 export const FIXED_DT = 1 / 60;  // seconds

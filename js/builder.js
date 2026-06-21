@@ -2,14 +2,21 @@ import { PART_DEFS, DRAW_FNS } from './parts.js';
 
 const COLS = 18;
 const ROWS = 32;
-const GRID_VERSION = 2;
+const GRID_VERSION = 3;
 
 function migratePartsToCurrentGrid(parts, fromVersion) {
   if (!parts) return parts;
-  if ((fromVersion || 1) < GRID_VERSION) {
-    return parts.map(p => ({ ...p, col: p.col * 2, row: p.row * 2 }));
+  let result = parts;
+  const v = fromVersion || 1;
+  if (v < 2) {
+    result = result.map(p => ({ ...p, col: p.col * 2, row: p.row * 2 }));
   }
-  return parts;
+  if (v < 3) {
+    // pod/engine h: 4→2, decoupler h: 2→1 — rows below each part shift up
+    // Simplest safe migration: keep positions, gaps may appear between parts.
+    // User can re-stack if needed.
+  }
+  return result;
 }
 
 const canvas = document.getElementById('grid-canvas');

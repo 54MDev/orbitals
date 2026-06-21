@@ -12,7 +12,7 @@ for (const [name, src] of [
 
 export const PART_DEFS = {
   pod: {
-    w: 2, h: 4,
+    w: 2, h: 2,
     dryMass: 800,
   },
   tank: {
@@ -21,13 +21,13 @@ export const PART_DEFS = {
     fuelMass: 1_800,
   },
   engine: {
-    w: 2, h: 4,
+    w: 2, h: 2,
     dryMass: 300,
     thrust: 150_000,
     isp: 300,
   },
   decoupler: {
-    w: 2, h: 2,
+    w: 2, h: 1,
     dryMass: 50,
   },
 };
@@ -87,29 +87,26 @@ export function drawTank(ctx, px, py, cw, ch, alpha) {
     return;
   }
 
-  const pad = cw * 0.12;
-  const tx  = px + pad, tw = cw - pad * 2;
-
   ctx.fillStyle = '#2d5a80';
-  ctx.fillRect(tx, py + 1, tw, ch - 2);
+  ctx.fillRect(px, py, cw, ch);
 
   ctx.fillStyle = 'rgba(100, 180, 255, 0.1)';
-  ctx.fillRect(tx, py + 1, tw * 0.3, ch - 2);
+  ctx.fillRect(px, py, cw * 0.3, ch);
 
   ctx.strokeStyle = 'rgba(80, 160, 220, 0.2)';
   ctx.lineWidth   = 1;
   const bands = 3;
   for (let i = 1; i < bands; i++) {
-    const by = py + 1 + (ch - 2) * (i / bands);
+    const by = py + ch * (i / bands);
     ctx.beginPath();
-    ctx.moveTo(tx, by);
-    ctx.lineTo(tx + tw, by);
+    ctx.moveTo(px, by);
+    ctx.lineTo(px + cw, by);
     ctx.stroke();
   }
 
   ctx.strokeStyle = 'rgba(70, 155, 215, 0.32)';
   ctx.lineWidth   = 1;
-  ctx.strokeRect(tx, py + 1, tw, ch - 2);
+  ctx.strokeRect(px, py, cw, ch);
 
   ctx.restore();
 }
@@ -169,31 +166,26 @@ export function drawDecoupler(ctx, px, py, cw, ch, alpha) {
     return;
   }
 
-  const pad = cw * 0.06;
-  const bh  = ch * 0.5;
-  const bx  = px + pad,       bw = cw - pad * 2;
-  const by  = py + (ch - bh) / 2;
-
   ctx.fillStyle = '#a88028';
-  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillRect(px, py, cw, ch);
 
   ctx.save();
   ctx.beginPath();
-  ctx.rect(bx, by, bw, bh);
+  ctx.rect(px, py, cw, ch);
   ctx.clip();
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.32)';
   ctx.lineWidth   = 2;
-  for (let x = -bh; x < bw + bh; x += 9) {
+  for (let x = -ch; x < cw + ch; x += 9) {
     ctx.beginPath();
-    ctx.moveTo(bx + x,      by);
-    ctx.lineTo(bx + x + bh, by + bh);
+    ctx.moveTo(px + x,      py);
+    ctx.lineTo(px + x + ch, py + ch);
     ctx.stroke();
   }
   ctx.restore();
 
   ctx.strokeStyle = 'rgba(255, 195, 45, 0.5)';
   ctx.lineWidth   = 1;
-  ctx.strokeRect(bx, by, bw, bh);
+  ctx.strokeRect(px, py, cw, ch);
 
   ctx.restore();
 }

@@ -1,4 +1,4 @@
-import { G, PLANET, ROCKET } from './constants.js';
+import { G, PLANET, ROCKET, CAMERA } from './constants.js';
 import { stateToElements, elementsToState } from './OrbitalMechanics.js';
 import { PART_DEFS, DRAW_FNS } from './parts.js';
 
@@ -254,6 +254,8 @@ export class Rocket {
       const gridW   = maxColRight  - minCol;
       const halfW   = (gridW * cellScale) / 2;
       const halfH   = (activeH * cellScale) / 2;
+      this._drawHalfW = halfW;
+      this._drawHalfH = halfH;
 
       for (const p of this.activeParts) {
         const def = PART_DEFS[p.type];
@@ -282,6 +284,8 @@ export class Rocket {
       }
     } else {
       // Fallback: triangle when no builder design is saved
+      this._drawHalfW = wid / 2;
+      this._drawHalfH = len / 2;
       ctx.beginPath();
       ctx.moveTo(0, -len / 2);
       ctx.lineTo(-wid / 2, len / 2);
@@ -311,5 +315,62 @@ export class Rocket {
       ctx.fillText(this.state.toUpperCase(), sp.x, sp.y - len - 8);
       ctx.restore();
     }
+  }
+
+  // Draws a velocity arrow in the current canvas context (world layer, pre-rocket-rotation).
+  // Call this immediately after draw(), still inside the world-layer ctx.save()/restore() block.
+  drawVelocityArrow(ctx, camera, canvasWidth, canvasHeight) {
+    if (this.state !== 'flying' && this.state !== 'rails') return;
+    if (ROCKET.LENGTH * camera.zoom < CAMERA.VELOCITY_ARROW_MIN_ROCKET_PX) return;
+
+    const speed = Math.hypot(this.vx, this.vy);
+    if (speed < 1) return;
+
+    const sp = camera.worldToScreen(this.x, this.y, canvasWidth, canvasHeight);
+
+    // Velocity direction in world-layer screen coords (y-axis flipped vs world)
+    const dirX = this.vx / speed;
+    const dirY = -this.vy / speed;
+
+    // Project the (rotated) rocket bounding box onto the velocity direction to find hull extent.
+    // Box half-extents are in screen pixels; rotation maps local → world-layer screen.
+    const hw = this._drawHalfW ?? ROCKET.WIDTH  * camera.zoom / 2;
+    const hh = this._drawHalfH ?? ROCKET.LENGTH * camera.zoom / 2;
+    const cosRot = Math.cos(this.rotation);
+    const sinRot = Math.sin(this.rotation);
+    const hullExtent = hw * Math.abs(cosRot * dirX + sinRot * dirY)
+                     + hh * Math.abs(cosRot * dirY - sinRot * dirX);
+
+    const arrowBase = hullExtent + CAMERA.VELOCITY_ARROW_OFFSET_PX;
+    const arrowLen  = Math.min(
+      CAMERA.VELOCITY_ARROW_MAX_PX,
+      Math.max(CAMERA.VELOCITY_ARROW_MIN_PX, speed / CAMERA.VELOCITY_ARROW_SPEED_MAX * CAMERA.VELOCITY_ARROW_MAX_PX)
+    );
+
+    const bx = sp.x + dirX * arrowBase;
+    const by = sp.y + dirY * arrowBase;
+    const tx = bx + dirX * arrowLen;
+    const ty = by + dirY * arrowLen;
+
+    // Arrowhead
+    const HEAD = 8;
+    const px = -dirY, py = dirX;
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(tx - dirX * HEAD, ty - dirY * HEAD);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(tx - dirX * HEAD + px * HEAD * 0.4, ty - dirY * HEAD + py * HEAD * 0.4);
+    ctx.lineTo(tx - dirX * HEAD - px * HEAD * 0.4, ty - dirY * HEAD - py * HEAD * 0.4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 }
