@@ -1,0 +1,319 @@
+<!-- @dsCard group="Staging" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Staging Panel</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d0d1a;
+    font-family: 'Courier New', monospace;
+    color: #c0c8e0;
+    font-size: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 24px;
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    width: 220px;
+    background: #11111f;
+    border: 1px solid rgba(80, 130, 220, 0.25);
+    border-radius: 4px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* Stats block above staging */
+  .stats-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(80, 130, 220, 0.2);
+  }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    color: #7a88aa;
+  }
+  .stat-row span:last-child { color: #c0c8e0; }
+
+  /* Section heading */
+  .section-heading {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: rgba(80, 130, 220, 0.7);
+    text-transform: uppercase;
+    padding-top: 2px;
+  }
+
+  .auto-assign-btn {
+    width: 100%;
+    background: rgba(80, 130, 220, 0.12);
+    border: 1px solid rgba(80, 130, 220, 0.35);
+    color: rgba(80, 130, 220, 0.9);
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    padding: 4px 8px;
+    cursor: pointer;
+    border-radius: 2px;
+    text-transform: uppercase;
+  }
+  .auto-assign-btn:hover {
+    background: rgba(80, 130, 220, 0.22);
+  }
+
+  /* Stage list */
+  .stage-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 240px;
+    overflow-y: auto;
+  }
+
+  .stage-row {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(80, 130, 220, 0.18);
+    border-radius: 3px;
+    padding: 6px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .stage-row-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .stage-badge {
+    background: rgba(80, 130, 220, 0.2);
+    border: 1px solid rgba(80, 130, 220, 0.45);
+    color: rgba(80, 130, 220, 1);
+    font-size: 9px;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    padding: 1px 5px;
+    border-radius: 2px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .stage-label {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(80, 130, 220, 0.2);
+    color: #c0c8e0;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 1px 2px;
+    outline: none;
+    min-width: 0;
+  }
+  .stage-label:focus {
+    border-bottom-color: rgba(80, 130, 220, 0.7);
+  }
+  .stage-label::placeholder { color: #444; }
+
+  .delete-btn {
+    background: none;
+    border: none;
+    color: rgba(180, 80, 80, 0.6);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 2px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .delete-btn:hover { color: rgba(220, 80, 80, 1); }
+
+  .stage-row-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+  }
+
+  .chips {
+    display: flex;
+    gap: 3px;
+    flex-wrap: wrap;
+  }
+
+  .chip {
+    background: rgba(60, 100, 180, 0.18);
+    border: 1px solid rgba(80, 130, 220, 0.3);
+    color: #8aacdd;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 2px;
+    letter-spacing: 0.04em;
+  }
+  .chip.dcp {
+    background: rgba(120, 80, 180, 0.15);
+    border-color: rgba(150, 100, 220, 0.35);
+    color: #b08ce0;
+  }
+
+  .dv-display {
+    font-size: 10px;
+    color: #8aaa77;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .dv-display.empty { color: #555; }
+
+  /* Unassigned warning row */
+  .stage-row.unassigned {
+    border-color: rgba(200, 80, 80, 0.3);
+    background: rgba(200, 50, 50, 0.05);
+  }
+  .unassigned-label {
+    font-size: 10px;
+    color: rgba(220, 80, 80, 0.8);
+    letter-spacing: 0.05em;
+  }
+  .chip.warn {
+    background: rgba(180, 60, 60, 0.18);
+    border-color: rgba(200, 80, 80, 0.4);
+    color: rgba(220, 100, 100, 0.9);
+  }
+
+  /* Add stage button */
+  .add-stage-btn {
+    background: none;
+    border: 1px dashed rgba(80, 130, 220, 0.25);
+    color: rgba(80, 130, 220, 0.5);
+    font-family: inherit;
+    font-size: 11px;
+    width: 100%;
+    padding: 3px;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+  .add-stage-btn:hover {
+    border-color: rgba(80, 130, 220, 0.55);
+    color: rgba(80, 130, 220, 0.9);
+  }
+
+  /* Total ΔV */
+  .total-dv {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(80, 130, 220, 0.2);
+    color: #7a88aa;
+  }
+  .total-dv span:last-child { color: #aad080; }
+
+  /* Divider */
+  hr {
+    border: none;
+    border-top: 1px solid rgba(80, 130, 220, 0.15);
+  }
+</style>
+</head>
+<body>
+<div class="sidebar">
+
+  <!-- Stats block (context) -->
+  <div class="stats-block">
+    <div class="stat-row"><span>DRY MASS</span><span>1650 kg</span></div>
+    <div class="stat-row"><span>FUEL</span><span>3600 kg</span></div>
+    <div class="stat-row"><span>THRUST</span><span>300 kN</span></div>
+    <div class="stat-row"><span>TWR</span><span>1.16</span></div>
+  </div>
+
+  <!-- Staging section -->
+  <div class="section-heading">Staging</div>
+
+  <button class="auto-assign-btn">Auto-Assign</button>
+
+  <div class="stage-list">
+
+    <!-- Stage 0 — launch stage -->
+    <div class="stage-row">
+      <div class="stage-row-top">
+        <span class="stage-badge">STG 0</span>
+        <input class="stage-label" type="text" value="Stage 1" placeholder="Stage 1">
+        <button class="delete-btn" title="Delete stage">✕</button>
+      </div>
+      <div class="stage-row-bottom">
+        <div class="chips">
+          <span class="chip">ENG</span>
+          <span class="chip dcp">DCP</span>
+        </div>
+        <span class="dv-display">Δv 2340 m/s</span>
+      </div>
+    </div>
+
+    <!-- Stage 1 -->
+    <div class="stage-row">
+      <div class="stage-row-top">
+        <span class="stage-badge">STG 1</span>
+        <input class="stage-label" type="text" value="Stage 2" placeholder="Stage 2">
+        <button class="delete-btn" title="Delete stage">✕</button>
+      </div>
+      <div class="stage-row-bottom">
+        <div class="chips">
+          <span class="chip">ENG ×2</span>
+          <span class="chip dcp">DCP</span>
+        </div>
+        <span class="dv-display">Δv 1820 m/s</span>
+      </div>
+    </div>
+
+    <!-- Stage 2 — final stage, no decoupler -->
+    <div class="stage-row">
+      <div class="stage-row-top">
+        <span class="stage-badge">STG 2</span>
+        <input class="stage-label" type="text" value="Stage 3" placeholder="Stage 3">
+        <button class="delete-btn" title="Delete stage">✕</button>
+      </div>
+      <div class="stage-row-bottom">
+        <div class="chips">
+          <span class="chip">ENG</span>
+        </div>
+        <span class="dv-display">Δv 660 m/s</span>
+      </div>
+    </div>
+
+    <!-- Unassigned warning -->
+    <div class="stage-row unassigned">
+      <div class="stage-row-top">
+        <span class="unassigned-label">⚠ Not staged</span>
+      </div>
+      <div class="stage-row-bottom">
+        <div class="chips">
+          <span class="chip warn">ENG</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <button class="add-stage-btn">+ Add stage</button>
+
+  <!-- Total ΔV -->
+  <div class="total-dv">
+    <span>Total Δv</span>
+    <span>4820 m/s</span>
+  </div>
+
+</div>
+</body>
+</html>

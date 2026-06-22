@@ -1,0 +1,145 @@
+<!-- @dsCard group="Staging" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Engine Context Menu</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d0d1a;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    gap: 40px;
+  }
+
+  .scene {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .scene-label {
+    color: rgba(80, 130, 220, 0.5);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  /* Fake builder canvas part for context */
+  .part-preview {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    background: #11111f;
+    border: 1px solid rgba(80, 130, 220, 0.2);
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .engine-block {
+    width: 48px;
+    height: 48px;
+    background: rgba(60, 160, 220, 0.18);
+    border: 1.5px solid rgba(80, 180, 255, 0.5);
+    border-radius: 2px;
+    position: relative;
+  }
+
+  /* Disabled engine overlay */
+  .engine-block.disabled {
+    opacity: 0.35;
+  }
+  .engine-block.disabled::before,
+  .engine-block.disabled::after {
+    content: '';
+    position: absolute;
+    background: rgba(220, 60, 60, 0.8);
+    width: 2px;
+    top: 0; bottom: 0;
+    left: 50%;
+    transform-origin: center;
+    border-radius: 1px;
+  }
+  .engine-block.disabled::before { transform: translateX(-50%) rotate(45deg) scaleY(1.2); }
+  .engine-block.disabled::after  { transform: translateX(-50%) rotate(-45deg) scaleY(1.2); }
+
+  /* Context menu */
+  .ctx-menu {
+    background: #1a1a2a;
+    border: 1px solid rgba(80, 130, 220, 0.4);
+    border-radius: 3px;
+    overflow: hidden;
+    min-width: 148px;
+  }
+
+  .ctx-menu button {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    border-bottom: 1px solid rgba(80, 130, 220, 0.12);
+    color: #c0c8e0;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    padding: 7px 12px;
+    text-align: left;
+    cursor: pointer;
+    letter-spacing: 0.03em;
+  }
+  .ctx-menu button:last-child { border-bottom: none; }
+  .ctx-menu button:hover { background: rgba(80, 130, 220, 0.1); }
+
+  .ctx-menu button.disable-action { color: rgba(220, 160, 60, 0.9); }
+  .ctx-menu button.enable-action  { color: rgba(100, 200, 100, 0.9); }
+  .ctx-menu button.remove-action  { color: #c0c8e0; }
+</style>
+</head>
+<body>
+
+  <!-- Enabled engine right-click -->
+  <div class="scene">
+    <span class="scene-label">Enabled engine</span>
+    <div class="part-preview">
+      <div class="engine-block"></div>
+    </div>
+    <div class="ctx-menu">
+      <button class="remove-action">Remove part</button>
+      <button class="disable-action">Disable engine</button>
+    </div>
+  </div>
+
+  <!-- Disabled engine right-click -->
+  <div class="scene">
+    <span class="scene-label">Disabled engine</span>
+    <div class="part-preview">
+      <div class="engine-block disabled"></div>
+    </div>
+    <div class="ctx-menu">
+      <button class="remove-action">Remove part</button>
+      <button class="enable-action">Enable engine</button>
+    </div>
+  </div>
+
+  <!-- Non-engine part (pod/tank) right-click -->
+  <div class="scene">
+    <span class="scene-label">Pod / Tank / Decoupler</span>
+    <div class="part-preview">
+      <div class="engine-block" style="background:rgba(80,180,120,0.15);border-color:rgba(100,200,140,0.4)"></div>
+    </div>
+    <div class="ctx-menu">
+      <button class="remove-action">Remove part</button>
+    </div>
+  </div>
+
+</body>
+</html>

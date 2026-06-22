@@ -8,8 +8,39 @@ export class Rocket {
   constructor() {
     let design = null;
     try { design = JSON.parse(localStorage.getItem('rocketDesign')); } catch {}
-    if (design && (design.gridVersion || 1) < 2 && Array.isArray(design.parts)) {
-      design = { ...design, parts: design.parts.map(p => ({ ...p, col: p.col * 2, row: p.row * 2 })) };
+    if (design && Array.isArray(design.parts)) {
+      const v = design.gridVersion || 1;
+      if (v < 2) {
+        design = { ...design, parts: design.parts.map(p => ({ ...p, col: p.col * 2, row: p.row * 2 })) };
+      }
+      if (v < 4) {
+        let counter = 0;
+        design = {
+          ...design,
+          parts: design.parts.map(p => ({
+            ...p,
+            id: p.id ?? `part_${counter++}`,
+            ...(p.type === 'engine' && p.enabled == null ? { enabled: true } : {}),
+          })),
+          stages: design.stages ?? [],
+        };
+      }
+      if (v < 5) {
+        // Stage numbering inverted: bottom segment is now the highest stage and
+        // fires first. Re-derive stageIndex from positions so stale saves are
+        // staged in the correct order.
+        const decouplers = design.parts.filter(p => p.type === 'decoupler');
+        const decCount = decouplers.length;
+        design = {
+          ...design,
+          parts: design.parts.map(p => {
+            if (p.type !== 'engine' && p.type !== 'decoupler') return p;
+            const belowCount = decouplers.filter(d => d !== p && d.row > p.row).length;
+            return { ...p, stageIndex: decCount - belowCount };
+          }),
+          stages: undefined,  // rebuilt from parts below
+        };
+      }
     }
 
     this.x = 0;
@@ -29,8 +60,46 @@ export class Rocket {
     this.maxThrust = design ? design.maxThrust : ROCKET.MAX_THRUST;
     this.exhaustVel = (design ? design.isp : ROCKET.ISP) * G0;
 
+    // Per-tank fuel (kg). Each stage's tanks are a separate reservoir: only the
+    // tanks feeding the currently-ignited engines drain, so upper-stage fuel is
+    // held back until its stage fires. `fuelMass` mirrors the active reservoir.
+    this.tankFuel = new Map();
+    if (this.parts) {
+      for (const p of this.parts) {
+        if (p.type === 'tank') this.tankFuel.set(p.id, PART_DEFS.tank.fuelMass);
+      }
+    }
+    this.activeTankIds = null;  // set by _recomputeStageStats()
+
     // Store the original full bounding-box height so dropped stages scale correctly.
     this._fullGridH = this._computeGridH(this.activeParts);
+
+    // Derive the stage list from the parts' stageIndex values so it always stays
+    // consistent with the assignment (rather than trusting a possibly-stale
+    // design.stages array). Stage 0 fires last; the highest index fires first.
+    const staged = this.parts && this.parts.some(p => p.stageIndex != null);
+    if (staged) {
+      const maxStage = this.parts.reduce(
+        (m, p) => (p.stageIndex != null && p.stageIndex > m ? p.stageIndex : m), 0
+      );
+      this.stages = Array.from({ length: maxStage + 1 }, (_, i) => ({ index: i }));
+    } else {
+      this.stages = (design?.stages?.length) ? design.stages : [];
+    }
+
+    // Staging state: which stage is currently active, and the set of engine IDs
+    // that have been ignited so far (accumulates as stages advance — highest
+    // index ignites at launch, then we count down toward stage 0).
+    this.activeStageIndex = staged ? this.stages.length - 1 : 0;
+    if (this.parts) {
+      this.ignitedEngineIds = staged
+        ? this._engineIdsForStage(this.activeStageIndex)
+        // No staging data (old save / unstaged) — fire all enabled engines.
+        : new Set(this.parts.filter(p => p.type === 'engine' && p.enabled !== false).map(p => p.id));
+      this._recomputeStageStats();
+    } else {
+      this.ignitedEngineIds = new Set();
+    }
 
     this.initialFuelMass = this.fuelMass;
     this.state = 'landed';  // 'flying' | 'landed' | 'crashed' | 'rails'
@@ -39,7 +108,41 @@ export class Rocket {
     this.sas = false;
   }
 
-  get mass() { return this.dryMass + this.fuelMass; }
+  get mass() {
+    if (!this.activeParts) return this.dryMass + this.fuelMass;
+    // Mass counts the fuel still in EVERY attached tank (upper reservoirs too),
+    // not just the active stage's reservoir.
+    let fuel = 0;
+    for (const p of this.activeParts) {
+      if (p.type === 'tank') fuel += this.tankFuel.get(p.id) || 0;
+    }
+    return this.dryMass + fuel;
+  }
+
+  _sumTankFuel(ids) {
+    let s = 0;
+    for (const id of ids) s += this.tankFuel.get(id) || 0;
+    return s;
+  }
+
+  // IDs of attached tanks in the same physical band (between decouplers) as the
+  // given engine rows — i.e. the reservoir that feeds those engines.
+  _bandTankIds(engineRows) {
+    if (!this.activeParts || engineRows.length === 0) return new Set();
+    const minER = Math.min(...engineRows);
+    const maxER = Math.max(...engineRows);
+    let upper = -Infinity, lower = Infinity;  // nearest decoupler rows above / below
+    for (const p of this.activeParts) {
+      if (p.type !== 'decoupler') continue;
+      if (p.row < minER && p.row > upper) upper = p.row;
+      if (p.row > maxER && p.row < lower) lower = p.row;
+    }
+    const ids = new Set();
+    for (const p of this.activeParts) {
+      if (p.type === 'tank' && p.row > upper && p.row < lower) ids.add(p.id);
+    }
+    return ids;
+  }
 
   // ── Staging ────────────────────────────────────────────────────────────────
 
@@ -54,74 +157,146 @@ export class Rocket {
     return maxRowBottom - minRow;
   }
 
-  canStage() {
-    return !!(this.activeParts && this.activeParts.some(p => p.type === 'decoupler'));
+  // IDs of enabled engines assigned to the given stage index.
+  _engineIdsForStage(stageIndex) {
+    if (!this.parts) return new Set();
+    return new Set(
+      this.parts
+        .filter(p => p.type === 'engine' && p.enabled !== false && p.stageIndex === stageIndex)
+        .map(p => p.id)
+    );
   }
 
-  // Detach the lowermost stage (below the lowest active decoupler).
-  // Returns the data needed to construct a Stage object, or null if not stageable.
+  // Recompute thrust / exhaust velocity from the currently ignited, still-attached engines.
+  _recomputeStageStats() {
+    if (!this.activeParts) return;
+    const ignited = this.activeParts.filter(
+      p => p.type === 'engine' && p.enabled !== false && this.ignitedEngineIds.has(p.id)
+    );
+    this.maxThrust  = ignited.reduce((s, p) => s + PART_DEFS[p.type].thrust, 0);
+    this.exhaustVel = (ignited.length > 0 ? PART_DEFS.engine.isp : ROCKET.ISP) * G0;
+
+    // Active reservoir = tanks feeding the currently-ignited engines.
+    this.activeTankIds   = this._bandTankIds(ignited.map(p => p.row));
+    this.initialFuelMass = this.activeTankIds.size * PART_DEFS.tank.fuelMass;
+    this.fuelMass        = this._sumTankFuel(this.activeTankIds);
+  }
+
+  // Remaining / capacity fuel (kg) for the reservoir feeding a given engine part.
+  engineFuelInfo(part) {
+    const ids = this._bandTankIds([part.row]);
+    return {
+      current:  this._sumTankFuel(ids),
+      capacity: ids.size * PART_DEFS.tank.fuelMass,
+    };
+  }
+
+  // Refill the active reservoir to capacity (dev "infinite fuel").
+  refuelActive() {
+    if (this.activeTankIds) {
+      for (const id of this.activeTankIds) this.tankFuel.set(id, PART_DEFS.tank.fuelMass);
+      this.fuelMass = this._sumTankFuel(this.activeTankIds);
+    } else {
+      this.fuelMass = this.initialFuelMass;
+    }
+  }
+
+  // Drain the active reservoir by `amount` kg (proportional drain leaves the
+  // upper reservoirs untouched).
+  _burnFuel(amount) {
+    if (!this.activeTankIds || this.activeTankIds.size === 0) {
+      this.fuelMass = Math.max(0, this.fuelMass - amount);  // fallback single pool
+      return;
+    }
+    let remaining = amount;
+    for (const id of this.activeTankIds) {
+      if (remaining <= 0) break;
+      const cur  = this.tankFuel.get(id) || 0;
+      const take = Math.min(cur, remaining);
+      this.tankFuel.set(id, cur - take);
+      remaining -= take;
+    }
+    this.fuelMass = this._sumTankFuel(this.activeTankIds);
+  }
+
+  canStage() {
+    return this.activeStageIndex > 0;
+  }
+
+  // Advance to the next stage: fire the current stage's decoupler (if any, dropping
+  // everything below it), ignite the next stage's engines, and recompute thrust/mass.
+  // Returns the data needed to construct a dropped Stage object, or null if nothing dropped.
   doStage() {
     if (!this.canStage()) return null;
 
-    // Find the lowest decoupler (highest row index = toward engine).
-    const decouplers = this.activeParts.filter(p => p.type === 'decoupler');
-    const lowest     = decouplers.reduce((a, b) => a.row > b.row ? a : b);
+    let droppedData = null;
+
+    // Fire the decoupler assigned to the current (highest remaining) stage. If
+    // several share the stage, the bottom-most (largest row) fires.
+    const decoupler = this.activeParts
+      .filter(p => p.type === 'decoupler' && p.stageIndex === this.activeStageIndex)
+      .reduce((lowest, p) => (!lowest || p.row > lowest.row ? p : lowest), null);
 
     // Parts strictly above the decoupler stay; decoupler + everything below drops.
-    const upper   = this.activeParts.filter(p => (p.row + PART_DEFS[p.type].h) <= lowest.row);
-    const dropped = this.activeParts.filter(p => p.row >= lowest.row);
+    const upper   = decoupler ? this.activeParts.filter(p => (p.row + PART_DEFS[p.type].h) <= decoupler.row) : null;
+    const dropped = decoupler ? this.activeParts.filter(p => p.row >= decoupler.row) : null;
 
-    // Compute world-space center offsets before mutating activeParts.
-    const fullGridH       = this._fullGridH;
-    const cellScaleWorld  = ROCKET.LENGTH / fullGridH;
-    const fullMinRow      = this.activeParts.reduce((m, p) => Math.min(m, p.row), Infinity);
-    const fullMaxRowBot   = this.activeParts.reduce((m, p) => Math.max(m, p.row + PART_DEFS[p.type].h), -Infinity);
-    const fullCenterRow   = (fullMinRow + fullMaxRowBot) / 2;
+    // Only drop if something stays attached — guards against a stray assignment
+    // trying to jettison the whole rocket (which would blow up the render math).
+    if (decoupler && upper.length > 0 && dropped.length > 0) {
+      // Compute world-space center offsets before mutating activeParts.
+      const fullGridH       = this._fullGridH;
+      const cellScaleWorld  = ROCKET.LENGTH / fullGridH;
+      const fullMinRow      = this.activeParts.reduce((m, p) => Math.min(m, p.row), Infinity);
+      const fullMaxRowBot   = this.activeParts.reduce((m, p) => Math.max(m, p.row + PART_DEFS[p.type].h), -Infinity);
+      const fullCenterRow   = (fullMinRow + fullMaxRowBot) / 2;
 
-    // Dropped stage center row.
-    const dropMinRow    = dropped.reduce((m, p) => Math.min(m, p.row), Infinity);
-    const dropMaxRowBot = dropped.reduce((m, p) => Math.max(m, p.row + PART_DEFS[p.type].h), -Infinity);
-    const dropCenterRow = (dropMinRow + dropMaxRowBot) / 2;
+      // Dropped stage center row.
+      const dropMinRow    = dropped.reduce((m, p) => Math.min(m, p.row), Infinity);
+      const dropMaxRowBot = dropped.reduce((m, p) => Math.max(m, p.row + PART_DEFS[p.type].h), -Infinity);
+      const dropCenterRow = (dropMinRow + dropMaxRowBot) / 2;
 
-    // Remaining rocket center row.
-    const remMinRow    = upper.length ? upper.reduce((m, p) => Math.min(m, p.row), Infinity) : fullCenterRow;
-    const remMaxRowBot = upper.length ? upper.reduce((m, p) => Math.max(m, p.row + PART_DEFS[p.type].h), -Infinity) : fullCenterRow;
-    const remCenterRow = (remMinRow + remMaxRowBot) / 2;
+      // Remaining rocket center row.
+      const remMinRow    = upper.length ? upper.reduce((m, p) => Math.min(m, p.row), Infinity) : fullCenterRow;
+      const remMaxRowBot = upper.length ? upper.reduce((m, p) => Math.max(m, p.row + PART_DEFS[p.type].h), -Infinity) : fullCenterRow;
+      const remCenterRow = (remMinRow + remMaxRowBot) / 2;
 
-    // In the rocket's local frame, increasing row = toward engine = "local down".
-    // World "local down" direction = (-sin(rot), -cos(rot)).
-    const sinR = Math.sin(this.rotation);
-    const cosR = Math.cos(this.rotation);
+      // In the rocket's local frame, increasing row = toward engine = "local down".
+      // World "local down" direction = (-sin(rot), -cos(rot)).
+      const sinR = Math.sin(this.rotation);
+      const cosR = Math.cos(this.rotation);
 
-    const dropDelta = dropCenterRow - fullCenterRow;
-    const dropX = this.x - sinR * dropDelta * cellScaleWorld;
-    const dropY = this.y - cosR * dropDelta * cellScaleWorld;
+      const dropDelta = dropCenterRow - fullCenterRow;
+      const dropX = this.x - sinR * dropDelta * cellScaleWorld;
+      const dropY = this.y - cosR * dropDelta * cellScaleWorld;
 
-    const remDelta = remCenterRow - fullCenterRow;
-    this.x -= sinR * remDelta * cellScaleWorld;
-    this.y -= cosR * remDelta * cellScaleWorld;
+      const remDelta = remCenterRow - fullCenterRow;
+      this.x -= sinR * remDelta * cellScaleWorld;
+      this.y -= cosR * remDelta * cellScaleWorld;
 
-    // Update active parts to remaining upper section.
-    this.activeParts = upper;
+      // Update active parts to remaining upper section. Dropped tanks take their
+      // fuel with them; the new active reservoir is set by _recomputeStageStats().
+      this.activeParts = upper;
+      this.dryMass = upper.reduce((s, p) => s + PART_DEFS[p.type].dryMass, 0);
 
-    // Recompute rocket properties from remaining parts.
-    const engines = upper.filter(p => p.type === 'engine');
-    const tanks   = upper.filter(p => p.type === 'tank');
-    this.dryMass   = upper.reduce((s, p) => s + PART_DEFS[p.type].dryMass, 0);
-    this.maxThrust = engines.reduce((s, p) => s + PART_DEFS[p.type].thrust, 0);
-    this.exhaustVel = (engines.length > 0 ? PART_DEFS.engine.isp : ROCKET.ISP) * G0;
-    const tankCap = tanks.reduce((s, p) => s + PART_DEFS[p.type].fuelMass, 0);
-    this.fuelMass = Math.min(this.fuelMass, tankCap);
-    this.initialFuelMass = this.fuelMass;
+      droppedData = {
+        parts: dropped,
+        x: dropX, y: dropY,
+        vx: this.vx, vy: this.vy,
+        simTime: this.simTime,
+        rotation: this.rotation,
+        originalGridH: fullGridH,
+      };
+    }
 
-    return {
-      parts: dropped,
-      x: dropX, y: dropY,
-      vx: this.vx, vy: this.vy,
-      simTime: this.simTime,
-      rotation: this.rotation,
-      originalGridH: fullGridH,
-    };
+    // Count down to the next stage and ignite its engines.
+    this.activeStageIndex--;
+    for (const id of this._engineIdsForStage(this.activeStageIndex)) {
+      this.ignitedEngineIds.add(id);
+    }
+    this._recomputeStageStats();
+
+    return droppedData;
   }
 
   update(dt, input) {
@@ -173,7 +348,7 @@ export class Rocket {
 
     if (this.fuelMass > 0 && this.throttle > 0) {
       const burnRate = (this.throttle * this.maxThrust) / this.exhaustVel;
-      this.fuelMass = Math.max(0, this.fuelMass - burnRate * dt);
+      this._burnFuel(burnRate * dt);
     }
 
     const a1 = this._accel();
@@ -227,6 +402,52 @@ export class Rocket {
     return { x: ax, y: ay };
   }
 
+  toggleEngine(part) {
+    if (!part || part.type !== 'engine') return;
+    const enabled = part.enabled === false;  // toggled new state
+    part.enabled = enabled;
+    if (!enabled) {
+      this.ignitedEngineIds.delete(part.id);
+    } else if (part.stageIndex == null || part.stageIndex >= this.activeStageIndex) {
+      // Re-enabling an engine whose stage has already fired (or is firing) re-ignites it.
+      this.ignitedEngineIds.add(part.id);
+    }
+    this._recomputeStageStats();
+  }
+
+  // Returns the active part under screen point (sx, sy), or null.
+  // Requires draw() to have been called at least once this session.
+  partAtScreenPos(sx, sy, camera, canvasWidth, canvasHeight) {
+    if (!this.activeParts || this.activeParts.length === 0) return null;
+    if (this._drawCellScale == null) return null;
+
+    const sp  = camera.worldToScreen(this.x, this.y, canvasWidth, canvasHeight);
+    const lx  = sx - sp.x;
+    const ly  = sy - sp.y;
+
+    // Un-rotate from canvas rotation back to local part frame
+    const cosR =  Math.cos(this.rotation);
+    const sinR =  Math.sin(this.rotation);
+    const rx   =  lx * cosR + ly * sinR;
+    const ry   = -lx * sinR + ly * cosR;
+
+    const cs   = this._drawCellScale;
+    const minCol = this._drawMinCol;
+    const minRow = this._drawMinRow;
+    const halfW  = this._drawHalfW;
+    const halfH  = this._drawHalfH;
+
+    for (const p of this.activeParts) {
+      const def = PART_DEFS[p.type];
+      const px1 = (p.col - minCol) * cs - halfW;
+      const py1 = (p.row - minRow) * cs - halfH;
+      const px2 = px1 + def.w * cs;
+      const py2 = py1 + def.h * cs;
+      if (rx >= px1 && rx <= px2 && ry >= py1 && ry <= py2) return p;
+    }
+    return null;
+  }
+
   draw(ctx, camera, canvasWidth, canvasHeight) {
     const sp  = camera.worldToScreen(this.x, this.y, canvasWidth, canvasHeight);
     const len = Math.max(ROCKET.LENGTH * camera.zoom, 1);
@@ -254,8 +475,11 @@ export class Rocket {
       const gridW   = maxColRight  - minCol;
       const halfW   = (gridW * cellScale) / 2;
       const halfH   = (activeH * cellScale) / 2;
-      this._drawHalfW = halfW;
-      this._drawHalfH = halfH;
+      this._drawHalfW     = halfW;
+      this._drawHalfH     = halfH;
+      this._drawMinCol    = minCol;
+      this._drawMinRow    = minRow;
+      this._drawCellScale = cellScale;
 
       for (const p of this.activeParts) {
         const def = PART_DEFS[p.type];
@@ -268,6 +492,10 @@ export class Rocket {
       if (this.throttle > 0 && this.fuelMass > 0 && this.state === 'flying') {
         for (const p of this.activeParts) {
           if (p.type !== 'engine') continue;
+          // Only ignited engines flame. ignitedEngineIds already excludes
+          // manually-disabled engines and any stage not yet activated, so an
+          // engine stays dark until its stage fires.
+          if (!this.ignitedEngineIds.has(p.id)) continue;
           const def       = PART_DEFS[p.type];
           const px        = (p.col - minCol) * cellScale - halfW;
           const engineBot = (p.row - minRow + def.h) * cellScale - halfH;

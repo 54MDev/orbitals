@@ -28,6 +28,18 @@
       overflow-y: auto;
     }
 
+    #sidebar-right {
+      width: 196px;
+      flex-shrink: 0;
+      background: #0c0c1c;
+      border-left: 1px solid rgba(70, 120, 200, 0.2);
+      display: flex;
+      flex-direction: column;
+      padding: 18px 12px 14px;
+      gap: 14px;
+      overflow-y: auto;
+    }
+
     h1 {
       font-size: 10px;
       letter-spacing: 4px;
@@ -237,7 +249,251 @@
       border-color: rgba(190, 55, 55, 0.3);
     }
 
-    canvas { display: block; flex: 1; }
+    canvas { display: block; flex: 1; min-width: 0; }
+
+    #ctx-menu {
+      display: none;
+      position: fixed;
+      z-index: 100;
+      background: #1a1a2a;
+      border: 1px solid rgba(80, 130, 220, 0.4);
+      font-family: monospace;
+      font-size: 12px;
+      min-width: 140px;
+    }
+
+    .ctx-item {
+      display: block;
+      width: 100%;
+      padding: 7px 12px;
+      background: transparent;
+      border: none;
+      color: #c0d0e0;
+      font-family: monospace;
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .ctx-item:hover { background: rgba(70, 120, 200, 0.12); }
+
+    #auto-assign-btn, #add-stage-btn {
+      width: 100%;
+      padding: 5px;
+      background: rgba(70, 120, 200, 0.06);
+      border: 1px solid rgba(70, 120, 200, 0.16);
+      color: rgba(130, 170, 220, 0.55);
+      font-family: monospace;
+      font-size: 10px;
+      letter-spacing: 1px;
+      cursor: pointer;
+      border-radius: 2px;
+    }
+    #add-stage-btn { border-style: dashed; font-size: 9px; }
+    #auto-assign-btn:hover, #add-stage-btn:hover {
+      background: rgba(70, 120, 200, 0.12);
+      color: #a0c0e8;
+    }
+
+    /* ── KSP-style staging stack ────────────────────────── */
+    #stg-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      max-height: 320px;
+      overflow-y: auto;
+      padding-right: 1px;
+    }
+
+    .stg-row {
+      display: flex;
+      flex-direction: column;
+      background: linear-gradient(rgba(255,255,255,0.035), rgba(0,0,0,0.15));
+      border: 1px solid rgba(70, 120, 200, 0.16);
+      border-radius: 3px;
+      overflow: hidden;
+      position: relative;
+    }
+    .stg-row:hover { border-color: rgba(70, 120, 200, 0.3); }
+    .stg-row.drag-over { border-color: rgba(100, 170, 255, 0.6); }
+    .stg-row.is-active { border-color: rgba(100, 200, 255, 0.55); background: linear-gradient(rgba(70,130,200,0.12), rgba(0,0,0,0.15)); }
+
+    .stg-topbar {
+      display: flex;
+      align-items: stretch;
+      gap: 5px;
+      background: linear-gradient(#ec9952, #cd7322);
+      padding: 3px 5px 3px 0;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -2px 4px rgba(0,0,0,0.2);
+    }
+    .stg-num {
+      flex-shrink: 0;
+      width: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 700;
+      color: #2a1606;
+      border-right: 1px solid rgba(0,0,0,0.22);
+      text-shadow: 0 1px 0 rgba(255,255,255,0.3);
+    }
+
+    .stg-iconrow {
+      display: flex;
+      align-items: stretch;
+      gap: 5px;
+      padding: 5px 4px 5px 5px;
+    }
+    .stg-icons {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .stg-dv {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      justify-content: center;
+      background: rgba(8, 18, 11, 0.55);
+      border: 1px solid rgba(0,0,0,0.3);
+      border-radius: 2px;
+      padding: 2px 7px 3px;
+    }
+    .stg-dv-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .stg-dv-k {
+      font-size: 8px;
+      letter-spacing: 1.5px;
+      color: rgba(150, 200, 165, 0.6);
+    }
+    .stg-dv-v {
+      font-size: 12px;
+      font-weight: 700;
+      color: #9bd28a;
+      white-space: nowrap;
+    }
+    .stg-dv-v small { font-size: 8px; font-weight: 400; color: rgba(155,210,170,0.55); }
+    .stg-dv-bar {
+      height: 3px;
+      border-radius: 2px;
+      background: rgba(120, 200, 140, 0.12);
+      overflow: hidden;
+    }
+    .stg-dv-bar i {
+      display: block;
+      height: 100%;
+      border-radius: 2px;
+      background: linear-gradient(90deg, #5fae74, #9bd28a);
+    }
+    .stg-tile {
+      position: relative;
+      width: 30px;
+      height: 30px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(rgba(255,255,255,0.07), rgba(0,0,0,0.28));
+      border: 1px solid rgba(120, 155, 205, 0.28);
+      border-radius: 3px;
+      color: #b8cee8;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+    .stg-tile .pico { width: 21px; height: 21px; display: block; }
+    .stg-tile[draggable="true"] { cursor: grab; }
+    .stg-tile[draggable="true"]:active { cursor: grabbing; }
+    .stg-tile.is-engine { color: #8fd0b6; border-color: rgba(112, 200, 160, 0.32); }
+    .stg-tile.is-decoupler { color: #e2bf6c; border-color: rgba(210, 175, 90, 0.32); }
+
+    .stg-count {
+      position: absolute;
+      right: -3px;
+      bottom: -3px;
+      min-width: 13px;
+      height: 13px;
+      padding: 0 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 1;
+      color: #08121f;
+      background: #7fb0e6;
+      border-radius: 7px;
+      box-shadow: 0 0 0 1px rgba(8,12,20,0.9);
+    }
+
+    .stg-grip {
+      flex-shrink: 0;
+      width: 11px;
+      align-self: stretch;
+      border-radius: 2px;
+      background-image: repeating-linear-gradient(135deg,
+        rgba(150, 180, 220, 0.32) 0 2px, transparent 2px 5px);
+      cursor: grab;
+    }
+    .stg-grip:hover { background-image: repeating-linear-gradient(135deg,
+        rgba(180, 205, 240, 0.5) 0 2px, transparent 2px 5px); }
+    .stg-grip:active { cursor: grabbing; }
+
+    .stg-footer {
+      display: flex;
+      align-items: stretch;
+      gap: 6px;
+    }
+    .stg-current {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      justify-content: center;
+      padding: 5px 8px;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid rgba(70, 120, 200, 0.18);
+      border-radius: 2px;
+    }
+    .stg-cur-label { font-size: 8px; letter-spacing: 2px; color: rgba(140,165,200,0.4); }
+    .stg-cur-val { font-size: 13px; color: rgba(150,185,230,0.75); }
+    .stg-reset {
+      flex-shrink: 0;
+      padding: 0 12px;
+      font-family: monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: #f2e2b0;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+      background: rgba(0,0,0,0.3);
+      border: none;
+      border-top: 3px solid;
+      border-bottom: 3px solid;
+      border-image: repeating-linear-gradient(45deg,
+        #e0b020 0 6px, #18130a 6px 12px) 3;
+      cursor: pointer;
+    }
+    .stg-reset:hover { color: #fff4d2; background: rgba(40,30,8,0.5); }
+
+    .total-dv {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 12px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(70, 120, 200, 0.1);
+    }
+    .total-dv .k { color: rgba(140,170,200,0.55); }
+    .total-dv .v { color: #9bd28a; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -291,10 +547,30 @@
 
     <button id="nav-launch" disabled>LAUNCH</button>
 
-    <p id="hint">Click to place<br>Right-click to remove<br>Scroll to zoom · Drag to pan</p>
+    <p id="hint">Click to place<br>Right-click for options<br>Scroll to zoom · Drag to pan</p>
   </aside>
 
   <canvas id="grid-canvas"></canvas>
+
+  <aside id="sidebar-right">
+    <h1>Staging</h1>
+    <button id="auto-assign-btn">AUTO-ASSIGN</button>
+    <div id="stg-stack"></div>
+    <button id="add-stage-btn">+ Add Stage</button>
+    <div class="stg-footer">
+      <div class="stg-current">
+        <span class="stg-cur-label">CURRENT STAGE</span>
+        <span class="stg-cur-val" id="stg-cur-val">none</span>
+      </div>
+      <button class="stg-reset">RESET</button>
+    </div>
+    <div class="total-dv">
+      <span class="k">Total Δv</span>
+      <span class="v" id="stat-total-dv">—</span>
+    </div>
+  </aside>
+
+  <div id="ctx-menu"></div>
   <script type="module" src="js/builder.js"></script>
 </body>
 </html>

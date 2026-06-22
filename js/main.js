@@ -89,11 +89,20 @@ const mapContextMenu = document.getElementById('map-context-menu');
 function showContextMenu(cx, cy, items) {
   mapContextMenu.innerHTML = '';
   for (const item of items) {
+    if (item.info) {
+      const info = document.createElement('div');
+      info.className = 'ctx-info';
+      info.textContent = item.label;
+      if (item.color) info.style.color = item.color;
+      mapContextMenu.appendChild(info);
+      continue;
+    }
     const btn = document.createElement('button');
     btn.textContent = item.label;
+    if (item.color) btn.style.color = item.color;
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      item.action();
+      if (item.action) item.action();
       hideContextMenu();
     });
     mapContextMenu.appendChild(btn);
@@ -168,13 +177,32 @@ canvas.addEventListener('mouseup', (e) => {
 });
 
 canvas.addEventListener('contextmenu', (e) => {
-  if (!mapView) return;
   e.preventDefault();
-  const target = getMapHitTarget(e.clientX, e.clientY);
-  if (target && mapCam.lockTarget === target) {
-    showContextMenu(e.clientX, e.clientY, [
-      { label: 'Unlock', action: () => { mapCam.lockTarget = null; } },
-    ]);
+  if (mapView) {
+    const target = getMapHitTarget(e.clientX, e.clientY);
+    if (target && mapCam.lockTarget === target) {
+      showContextMenu(e.clientX, e.clientY, [
+        { label: 'Unlock', action: () => { mapCam.lockTarget = null; } },
+      ]);
+    } else {
+      hideContextMenu();
+    }
+    return;
+  }
+
+  // Flight mode: right-click engine to toggle it
+  if (rocket.state === 'crashed') return;
+  const rect = canvas.getBoundingClientRect();
+  const sx   = e.clientX - rect.left;
+  const sy   = e.clientY - rect.top;
+  const part = rocket.partAtScreenPos(sx, sy, camera, canvas.width, canvas.height);
+  if (part && part.type === 'engine') {
+    const isEnabled = part.enabled !== false;
+    showContextMenu(e.clientX, e.clientY, [{
+      label:  isEnabled ? 'Disable engine' : 'Enable engine',
+      color:  isEnabled ? 'rgba(220, 60, 60, 0.9)' : '#55c87a',
+      action: () => { rocket.toggleEngine(part); },
+    }]);
   } else {
     hideContextMenu();
   }
@@ -260,6 +288,20 @@ canvas.addEventListener('click', (e) => {
     }
   }
 
+  // Click an engine to inspect its reservoir's remaining fuel.
+  if (rocket.state !== 'crashed') {
+    const part = rocket.partAtScreenPos(cx, cy, camera, canvas.width, canvas.height);
+    if (part && part.type === 'engine') {
+      const { current, capacity } = rocket.engineFuelInfo(part);
+      const label = capacity > 0
+        ? `Fuel ${Math.round(current)} / ${Math.round(capacity)} kg`
+        : 'No tank fuel';
+      showContextMenu(e.clientX, e.clientY, [{ info: true, label }]);
+      e.stopPropagation();  // keep the document click listener from closing it
+      return;
+    }
+  }
+
   // Rails click-to-warp
   const ddx = cx - canvas.width / 2;
   const ddy = cy - canvas.height / 2;
@@ -284,7 +326,7 @@ canvas.addEventListener('click', (e) => {
 });
 
 function update(dt) {
-  if (dev.infiniteFuel) rocket.fuelMass = rocket.initialFuelMass;
+  if (dev.infiniteFuel) rocket.refuelActive();
 
   const levels = warpLevels();
   if (!levels.includes(timeWarp)) timeWarp = levels[levels.length - 1];
@@ -431,7 +473,9 @@ function drawHUD() {
     const r = Math.hypot(rocket.x, rocket.y);
     const alt = (r - PLANET.RADIUS) / 1000;
     const spd = Math.hypot(rocket.vx, rocket.vy);
-    const fuel = (rocket.fuelMass / rocket.initialFuelMass * 100).toFixed(0);
+    const fuel = rocket.initialFuelMass > 0
+      ? (rocket.fuelMass / rocket.initialFuelMass * 100).toFixed(0)
+      : '0';
 
     let hudY = 28;
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
@@ -451,9 +495,11 @@ function drawHUD() {
       ctx.fillText('SAS  ON', 16, hudY); hudY += LINE;
       ctx.fillStyle = 'rgba(255,255,255,0.75)';
     }
-    if (rocket.canStage()) {
+    if (rocket.stages && rocket.stages.length > 1) {
       ctx.fillStyle = 'rgba(255, 220, 80, 0.85)';
-      ctx.fillText(`STG  ${rocket.activeParts.filter(p => p.type === 'decoupler').length}  [SPACE]`, 16, hudY);
+      const hint = rocket.canStage() ? '  [SPACE]' : '';
+      // Highest stage fires first; counts down toward stage 0.
+      ctx.fillText(`STG ${rocket.activeStageIndex}/${rocket.stages.length - 1}${hint}`, 16, hudY);
       hudY += LINE;
       ctx.fillStyle = 'rgba(255,255,255,0.75)';
     }
