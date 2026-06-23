@@ -21,7 +21,7 @@ window.addEventListener('resize', resize);
 const planet = new Planet();
 const camera = new Camera(canvas.width, canvas.height);
 const starfield = new Starfield();
-const rocket = new Rocket();
+let rocket = new Rocket();
 const input = new Input();
 const trajectory = new Trajectory();
 const droppedStages = [];
@@ -550,12 +550,10 @@ function drawHUD() {
     ctx.fillText('W / ↑  launch', 16, 28);
     ctx.fillText('A D / ← →  rotate', 16, 46);
     ctx.fillText('S / ↓  cut throttle', 16, 64);
-  } else if (rocket.state === 'crashed') {
-    ctx.fillStyle = 'rgba(255,80,80,0.9)';
-    ctx.font = '18px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('CRASHED — reload to retry', canvas.width / 2, canvas.height / 2 + 40);
   }
+
+  // Crash menu overlay (relaunch / go to VAB) — driven by rocket state each frame
+  crashMenu.style.display = rocket.state === 'crashed' ? 'flex' : 'none';
 
   if (mapView) {
     ctx.fillStyle = 'rgba(100, 255, 200, 0.85)';
@@ -608,6 +606,31 @@ function drawDevPanel() {
 
   ctx.restore();
 }
+
+// --- Crash menu (relaunch without reloading the page) ---
+const crashMenu = document.getElementById('crash-menu');
+
+function relaunch() {
+  rocket = new Rocket();
+  camera.target = rocket;
+  droppedStages.length = 0;
+
+  timeWarp = 1;
+  warpTarget = null;
+
+  if (mapView) {
+    mapView = false;
+    if (_mapSavedLogZoom !== null) {
+      camera._logZoom = _mapSavedLogZoom;
+      _mapSavedLogZoom = null;
+    }
+  }
+  camera.rotation = 0;
+  hideContextMenu();
+}
+
+document.getElementById('crash-relaunch').addEventListener('click', relaunch);
+// "GO TO VAB" is a plain <a href="builder.html"> — the VAB's LAUNCH returns here.
 
 const loop = new GameLoop(update, render);
 loop.start();

@@ -355,15 +355,17 @@ export class Rocket {
     this.vx += 0.5 * (a0.x + a1.x) * dt;
     this.vy += 0.5 * (a0.y + a1.y) * dt;
 
-    // Surface collision
-    const r = Math.hypot(this.x, this.y);
-    const surfaceR = PLANET.RADIUS + ROCKET.LENGTH / 2;  // center altitude when base touches surface
-    if (r <= surfaceR) {
-      const speed = Math.hypot(this.vx, this.vy);
+    // Surface collision (per-part hitbox — see _checkSurfaceCollision)
+    const col = this._checkSurfaceCollision();
+    if (col.hit) {
+      const speed = Math.hypot(this.vx, this.vy);  // read before the snap zeroes it
       this.state = speed > ROCKET.CRASH_SPEED ? 'crashed' : 'landed';
-      const ang = Math.atan2(this.y, this.x);
-      this.x = Math.cos(ang) * surfaceR;
-      this.y = Math.sin(ang) * surfaceR;
+      // Push the centre outward along the radial normal by the deepest penetration.
+      const r  = Math.hypot(this.x, this.y) || 1;
+      const nx = this.x / r;
+      const ny = this.y / r;
+      this.x += nx * col.penetration;
+      this.y += ny * col.penetration;
       this.vx = 0;
       this.vy = 0;
       this.throttle = 0;
@@ -373,7 +375,7 @@ export class Rocket {
     // Transition to Keplerian rails when engines are off and orbit fully clears the atmosphere
     const enginesOff = this.throttle < 0.01 || this.fuelMass <= 0;
     if (enginesOff) {
-      const alt = r - PLANET.RADIUS;
+      const alt = Math.hypot(this.x, this.y) - PLANET.RADIUS;
       if (alt > PLANET.ATMOSPHERE_ALTITUDE) {
         const els = stateToElements(this.x, this.y, this.vx, this.vy, this.simTime);
         if (els !== null) {
@@ -400,6 +402,72 @@ export class Rocket {
       ay += a * Math.cos(this.rotation);
     }
     return { x: ax, y: ay };
+  }
+
+  // Per-part surface collision. Tests every active part's grid-cell rectangle
+  // against the planet circle, so the hitbox shrinks correctly after staging and
+  // is accurate at any orientation. Returns the deepest penetration found.
+  //
+  // Works in the rocket's local part frame — the same frame draw() lays parts out
+  // in (+X right, +Y down, cellScaleWorld metres per grid cell). The planet centre
+  // is transformed into that frame once, then each part is an axis-aligned rect
+  // (rotation preserves distances). No side effects.
+  _checkSurfaceCollision() {
+    // No builder design (fallback triangle): keep the simple single-radius check.
+    if (!this.activeParts || this.activeParts.length === 0) {
+      const r = Math.hypot(this.x, this.y);
+      const surfaceR = PLANET.RADIUS + ROCKET.LENGTH / 2;
+      return { hit: r <= surfaceR, penetration: surfaceR - r };
+    }
+
+    const cellScaleWorld = ROCKET.LENGTH / this._fullGridH;
+
+    // Active-parts bounding box (metres) — identical layout to draw().
+    let minRow = Infinity, maxRowBottom = -Infinity;
+    let minCol = Infinity, maxColRight  = -Infinity;
+    for (const p of this.activeParts) {
+      const def = PART_DEFS[p.type];
+      minRow       = Math.min(minRow,       p.row);
+      maxRowBottom = Math.max(maxRowBottom,  p.row + def.h);
+      minCol       = Math.min(minCol,        p.col);
+      maxColRight  = Math.max(maxColRight,   p.col + def.w);
+    }
+    const halfW = ((maxColRight - minCol) * cellScaleWorld) / 2;
+    const halfH = ((maxRowBottom - minRow) * cellScaleWorld) / 2;
+
+    // Planet centre (world origin) in the local part frame: world→local mirrors
+    // the inverse transform in partAtScreenPos (screen flips world +Y, then
+    // un-rotate by the rocket's rotation).
+    const dx = -this.x;
+    const dy = -this.y;
+    const cosR = Math.cos(this.rotation);
+    const sinR = Math.sin(this.rotation);
+    const planetLx =  dx * cosR - dy * sinR;
+    const planetLy = -dx * sinR - dy * cosR;
+
+    const R2 = PLANET.RADIUS * PLANET.RADIUS;
+    let hit = false;
+    let maxPenetration = 0;
+    for (const p of this.activeParts) {
+      const def = PART_DEFS[p.type];
+      const px1 = (p.col - minCol) * cellScaleWorld - halfW;
+      const py1 = (p.row - minRow) * cellScaleWorld - halfH;
+      const px2 = px1 + def.w * cellScaleWorld;
+      const py2 = py1 + def.h * cellScaleWorld;
+
+      // Closest point on this part's rectangle to the planet centre.
+      const closestX = Math.max(px1, Math.min(planetLx, px2));
+      const closestY = Math.max(py1, Math.min(planetLy, py2));
+      const ddx = closestX - planetLx;
+      const ddy = closestY - planetLy;
+      const distSq = ddx * ddx + ddy * ddy;
+      if (distSq < R2) {
+        hit = true;
+        const penetration = PLANET.RADIUS - Math.sqrt(distSq);
+        if (penetration > maxPenetration) maxPenetration = penetration;
+      }
+    }
+    return { hit, penetration: maxPenetration };
   }
 
   toggleEngine(part) {

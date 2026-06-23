@@ -35,7 +35,7 @@ export class Stage {
     this.vx += 0.5 * (a0.x + a1.x) * dt;
     this.vy += 0.5 * (a0.y + a1.y) * dt;
 
-    if (Math.hypot(this.x, this.y) <= PLANET.RADIUS) {
+    if (this._checkSurfaceCollision()) {
       this.state = 'destroyed';
       return;
     }
@@ -63,6 +63,47 @@ export class Stage {
     const r = Math.hypot(this.x, this.y);
     const g = G * PLANET.MASS / (r * r);
     return { x: -g * this.x / r, y: -g * this.y / r };
+  }
+
+  // Per-part surface collision (same approach as Rocket._checkSurfaceCollision):
+  // transform the planet centre into this stage's local part frame and test each
+  // part as an axis-aligned rectangle. A dropped stage is destroyed on contact.
+  _checkSurfaceCollision() {
+    const cellScaleWorld = ROCKET.LENGTH / this.originalGridH;
+
+    let minRow = Infinity, maxRowBottom = -Infinity;
+    let minCol = Infinity, maxColRight  = -Infinity;
+    for (const p of this.parts) {
+      const def = PART_DEFS[p.type];
+      minRow       = Math.min(minRow,       p.row);
+      maxRowBottom = Math.max(maxRowBottom,  p.row + def.h);
+      minCol       = Math.min(minCol,        p.col);
+      maxColRight  = Math.max(maxColRight,   p.col + def.w);
+    }
+    const halfW = ((maxColRight - minCol) * cellScaleWorld) / 2;
+    const halfH = ((maxRowBottom - minRow) * cellScaleWorld) / 2;
+
+    const dx = -this.x;
+    const dy = -this.y;
+    const cosR = Math.cos(this.rotation);
+    const sinR = Math.sin(this.rotation);
+    const planetLx =  dx * cosR - dy * sinR;
+    const planetLy = -dx * sinR - dy * cosR;
+
+    const R2 = PLANET.RADIUS * PLANET.RADIUS;
+    for (const p of this.parts) {
+      const def = PART_DEFS[p.type];
+      const px1 = (p.col - minCol) * cellScaleWorld - halfW;
+      const py1 = (p.row - minRow) * cellScaleWorld - halfH;
+      const px2 = px1 + def.w * cellScaleWorld;
+      const py2 = py1 + def.h * cellScaleWorld;
+      const closestX = Math.max(px1, Math.min(planetLx, px2));
+      const closestY = Math.max(py1, Math.min(planetLy, py2));
+      const ddx = closestX - planetLx;
+      const ddy = closestY - planetLy;
+      if (ddx * ddx + ddy * ddy < R2) return true;
+    }
+    return false;
   }
 
   draw(ctx, camera, canvasWidth, canvasHeight) {

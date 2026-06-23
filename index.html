@@ -73,12 +73,60 @@
       white-space: nowrap;
       letter-spacing: 1px;
     }
+    #crash-menu {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 28px 36px;
+      background: rgba(8, 12, 22, 0.92);
+      border: 1px solid rgba(255, 80, 80, 0.4);
+      border-radius: 4px;
+      z-index: 300;
+      font-family: monospace;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
+    }
+    #crash-menu .crash-title {
+      color: rgba(255, 80, 80, 0.95);
+      font-size: 22px;
+      letter-spacing: 4px;
+    }
+    #crash-menu button,
+    #crash-menu a {
+      width: 200px;
+      padding: 10px 14px;
+      background: transparent;
+      border: 1px solid rgba(120, 170, 255, 0.4);
+      color: rgba(180, 210, 255, 0.85);
+      font-family: monospace;
+      font-size: 13px;
+      letter-spacing: 2px;
+      cursor: pointer;
+      border-radius: 2px;
+      text-align: center;
+      text-decoration: none;
+    }
+    #crash-menu button:hover,
+    #crash-menu a:hover {
+      background: rgba(100, 180, 255, 0.14);
+      color: #c8e0ff;
+      border-color: rgba(120, 170, 255, 0.7);
+    }
   </style>
 </head>
 <body>
   <a id="nav-builder" href="builder.html">VAB</a>
   <canvas id="canvas"></canvas>
   <div id="map-context-menu"></div>
+  <div id="crash-menu">
+    <div class="crash-title">CRASHED</div>
+    <button id="crash-relaunch">RELAUNCH</button>
+    <a id="crash-vab" href="builder.html">GO TO VAB</a>
+  </div>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

@@ -44,8 +44,8 @@ python3 -m http.server 8080
 | `js/Camera.js` | World→screen transform, logarithmic zoom, scroll-wheel handler |
 | `js/Planet.js` | Draws filled circle + atmosphere gradient |
 | `js/Starfield.js` | Static star background |
-| `js/Rocket.js` | Rocket state machine, Velocity Verlet integration, thrust, parts-based draw, staging |
-| `js/Stage.js` | Dropped stage — independent physics, rails transition, parts-based draw |
+| `js/Rocket.js` | Rocket state machine, Velocity Verlet integration, thrust, parts-based draw, staging, per-part surface collision (`_checkSurfaceCollision`) |
+| `js/Stage.js` | Dropped stage — independent physics, rails transition, parts-based draw, per-part surface collision |
 | `js/Input.js` | Keyboard state via `Set` of held key codes |
 | `js/Trajectory.js` | Forward-integrates 500 steps × 10 s/step, draws dashed path + orbit ellipse |
 | `js/OrbitalMechanics.js` | State→orbital elements, elements→state reconstruction (Kepler solver) |
@@ -81,7 +81,7 @@ FIXED_DT        = 1/60 s
 - **Gravity**: `F = G*M*m / r²` computed in `Rocket._accel()` each half-step
 - **Thrust**: Tsiolkovsky — burn rate = `(throttle × MAX_THRUST) / (Isp × g0)`; fuel mass deducted each frame
 - **World coords**: meters, planet center at origin (0,0); +Y is up
-- **Surface collision**: rocket center altitude vs `PLANET.RADIUS + ROCKET.LENGTH/2`; below 50 m/s → landed, above → crashed
+- **Surface collision**: per-part hitbox — `Rocket._checkSurfaceCollision()` transforms the planet centre into the rocket's local part frame and tests each active part as an axis-aligned rectangle against the planet circle. Returns the deepest penetration; the centre is then pushed outward along the radial normal by that amount. Below 50 m/s → landed, above → crashed. Falls back to the old single-radius check (`PLANET.RADIUS + ROCKET.LENGTH/2`) when there's no builder design. Dropped stages use the same algorithm (`Stage._checkSurfaceCollision()`, boolean → `destroyed`). See `changes-collision-crashmenu.md`.
 
 ---
 
@@ -93,8 +93,10 @@ flying  →  (engines off, orbit above atmosphere)   →  rails
 flying  →  (surface contact, speed < 50 m/s)       →  landed
 flying  →  (surface contact, speed ≥ 50 m/s)       →  crashed
 rails   →  (W/↑ pressed — any thrust input)        →  flying
-crashed →  (reload)
+crashed →  (RELAUNCH button — no page reload)
 ```
+
+On crash, an interactive `#crash-menu` overlay (in `index.html`) appears with **RELAUNCH** and **GO TO VAB**. `drawHUD()` toggles its visibility each frame from `rocket.state`. `relaunch()` in `main.js` rebuilds the rocket in place (`rocket` is a `let`), clears dropped stages, resets time warp / map view / camera — no page reload. "GO TO VAB" is a plain link to `builder.html`.
 
 On rails, position is computed analytically from Keplerian orbital elements each frame instead of integrating forces. `rocket.railsElements` holds `{ a, e, omega, prograde, M0, n, t_epoch }`.
 
