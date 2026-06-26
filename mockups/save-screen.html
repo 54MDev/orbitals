@@ -1,0 +1,137 @@
+<!-- @dsCard group="Main Menu" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Save / Load Screen</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #00000a;
+    font-family: 'Courier New', monospace;
+    color: #c0c8e0;
+    font-size: 12px;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+  }
+
+  .panel {
+    width: 520px;
+    background: rgba(8,12,22,0.94);
+    border: 1px solid rgba(100,180,255,0.28);
+    border-radius: 4px;
+    box-shadow: 0 4px 28px rgba(0,0,0,0.6);
+    overflow: hidden;
+  }
+
+  .panel-head {
+    padding: 14px 20px;
+    border-bottom: 1px solid rgba(100,180,255,0.18);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .panel-head .h {
+    font-size: 13px;
+    letter-spacing: 5px;
+    color: #aad0ff;
+  }
+  .panel-head .close {
+    color: rgba(140,180,255,0.5);
+    cursor: pointer;
+    letter-spacing: 0;
+  }
+
+  .slots {
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .slot {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 14px;
+    border: 1px solid rgba(70,120,200,0.22);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .slot:hover {
+    background: rgba(70,120,200,0.1);
+    border-color: rgba(70,120,200,0.55);
+  }
+  .slot.empty {
+    color: rgba(140,180,255,0.35);
+    font-style: italic;
+    justify-content: center;
+  }
+
+  .thumb {
+    width: 64px;
+    height: 44px;
+    flex-shrink: 0;
+    border: 1px solid rgba(100,180,255,0.2);
+    border-radius: 2px;
+    background:
+      radial-gradient(circle at 30% 70%, rgba(60,90,160,0.5), transparent 60%),
+      #050510;
+  }
+
+  .meta { flex: 1; }
+  .meta .name {
+    font-size: 13px;
+    color: #cfe0ff;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .meta .sub {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: rgba(140,180,255,0.5);
+  }
+
+  .stamp {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: rgba(140,180,255,0.4);
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <div class="panel-head">
+      <div class="h">LOAD GAME</div>
+      <div class="close">&times;</div>
+    </div>
+    <div class="slots">
+      <div class="slot">
+        <div class="thumb"></div>
+        <div class="meta">
+          <div class="name">Munar Transfer</div>
+          <div class="sub">APO 1,240 km &middot; PERI 180 km &middot; &Delta;v 820 m/s</div>
+        </div>
+        <div class="stamp">DAY 4<br>14:22</div>
+      </div>
+      <div class="slot">
+        <div class="thumb"></div>
+        <div class="meta">
+          <div class="name">First Orbit</div>
+          <div class="sub">APO 210 km &middot; PERI 195 km &middot; &Delta;v 1,940 m/s</div>
+        </div>
+        <div class="stamp">DAY 1<br>08:05</div>
+      </div>
+      <div class="slot empty">— EMPTY SLOT —</div>
+      <div class="slot empty">— EMPTY SLOT —</div>
+    </div>
+  </div>
+</body>
+</html>
